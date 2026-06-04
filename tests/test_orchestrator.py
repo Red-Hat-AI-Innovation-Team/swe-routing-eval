@@ -220,6 +220,22 @@ def test_run_saves_record_per_attempt(tmp_path: Path) -> None:
     assert attempt_indices == {0, 1, 2}
 
 
+def test_run_populates_cost_usd_from_price_table(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+
+    _resolved = GradeResult(resolved=True, compiled=True)
+    with patch("swe_routing_eval.grading.safe_grade", return_value=_resolved):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=1, max_workers=1)
+        orc.run(cfg, [_instance()], _workspace_factory, BudgetConfig(max_spend_usd=100.0))
+
+    record = store.list_all()[0]
+    # PRICE_TABLE opus: 0.015/1k in + 0.075/1k out; mock has 1000 in + 200 out
+    # cost = 1000/1000 * 0.015 + 200/1000 * 0.075 = 0.015 + 0.015 = 0.030
+    assert record.cost_usd == pytest.approx(0.030)
+    assert record.cost_usd != 0.0
+
+
 def test_run_raises_before_inference_if_budget_exceeded(tmp_path: Path) -> None:
     store = FileStore(tmp_path / "runs.db")
     scaffold = _mock_scaffold()
