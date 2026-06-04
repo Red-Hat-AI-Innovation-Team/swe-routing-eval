@@ -128,6 +128,7 @@ def segment_stats(
     model_id: str,
     records: list[RunRecord],
     seed: int | None = None,
+    instance_filter: set[str] | None = None,
 ) -> SegmentResult:
     """Compute per-segment resolution rate with bootstrap CI.
 
@@ -139,21 +140,33 @@ def segment_stats(
         model_id: pinned model ID for these records
         records: all run-store records for this (segment, model) pair
         seed: RNG seed for reproducibility
+        instance_filter: if provided, restrict to records whose instance_id is
+            in this set. Use to separate clean (decontam_overlap=False) instances
+            from the full population — pass clean instance IDs for the clean-tier
+            result and None (or all IDs) for the all-instances result.
 
     Returns:
         SegmentResult with n_instances, n_attempts, pass_at_1, and bootstrap CI.
     """
-    if not records:
-        raise ValueError(f"No records for segment={segment!r} model_id={model_id!r}")
+    active = (
+        [r for r in records if r.instance_id in instance_filter]
+        if instance_filter is not None
+        else records
+    )
+    if not active:
+        raise ValueError(
+            f"No records for segment={segment!r} model_id={model_id!r}"
+            + (f" after filtering to {len(instance_filter)} instance(s)" if instance_filter else "")
+        )
 
     by_instance: dict[str, list[bool]] = defaultdict(list)
-    for r in records:
+    for r in active:
         by_instance[r.instance_id].append(r.resolved)
 
     instance_resolved = [any(v) for v in by_instance.values()]
     n_instances = len(instance_resolved)
-    n_attempts = len(records)
-    pass_at_1 = sum(r.resolved for r in records) / n_attempts
+    n_attempts = len(active)
+    pass_at_1 = sum(r.resolved for r in active) / n_attempts
     ci_lower, ci_upper = bootstrap_ci(instance_resolved, seed=seed)
 
     return SegmentResult(
@@ -165,3 +178,31 @@ def segment_stats(
         ci_lower=ci_lower,
         ci_upper=ci_upper,
     )
+
+
+def power_flag(
+    n_current: int,
+    p_discordant: float,
+    delta: float,
+    alpha: float = 0.05,
+    target_power: float = 0.80,
+) -> tuple[bool, int]:
+    """Determine whether a segment is underpowered and the required N.
+
+    Computes the Connor (1987) required sample size and compares it to the
+    current number of instances. Used to set FrontierPoint.underpowered and
+    to produce the "needs N more" flag in the memo.
+
+    Args:
+        n_current: number of instances evaluated in this segment so far
+        p_discordant: estimated fraction of instances where tiers disagree
+            (from M1 pilot; use (b+c)/n from mcnemar_test discordant counts)
+        delta: minimum detectable difference in resolution rate
+        alpha: type-I error rate
+        target_power: desired power (1 - type-II error rate)
+
+    Returns:
+        (is_underpowered, required_n): True if n_current < required_n.
+    """
+    required_n = connor_power(p_discordant, delta, alpha, target_power)
+    return n_current < required_n, required_n

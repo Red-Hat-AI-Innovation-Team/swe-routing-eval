@@ -147,3 +147,32 @@ def test_render_memo_returns_string() -> None:
     result = render_memo(pts)
     assert isinstance(result, str)
     assert len(result) > 200
+
+
+# ---------------------------------------------------------------------------
+# contamination_tier field and clean-first ordering — issue #38
+# ---------------------------------------------------------------------------
+
+
+def test_frontier_point_default_contamination_tier() -> None:
+    pt = _pt()
+    assert pt.contamination_tier == "all"
+
+
+def test_render_memo_clean_tier_appears_before_contaminated() -> None:
+    clean = _pt("kubectl", cost=1.0, rate=0.5)
+    clean.contamination_tier = "clean"
+    contam = _pt("kubectl", model_id=_OPUS_ID, cost=0.5, rate=0.4)
+    contam.contamination_tier = "all"
+    memo = render_memo([clean, contam])
+    clean_pos = memo.index("clean")
+    all_pos = memo.index("all")
+    assert clean_pos < all_pos
+
+
+def test_render_memo_shows_tier_column() -> None:
+    pt = _pt()
+    pt.contamination_tier = "clean"
+    memo = render_memo([pt])
+    assert "Tier" in memo
+    assert "clean" in memo

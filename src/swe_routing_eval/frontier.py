@@ -22,6 +22,7 @@ class FrontierPoint:
     ci_lower: float
     ci_upper: float
     underpowered: bool = False
+    contamination_tier: str = "all"  # "clean" (decontam_overlap=False only) or "all"
 
     @property
     def label(self) -> str:
@@ -95,22 +96,30 @@ def render_memo(
     lines: list[str] = ["# v1 Routing Eval — Result Memo\n"]
 
     # --- per-segment result ---
+    # Within each segment, clean tier (decontam_overlap=False) leads the table.
     lines.append("## Results\n")
     for seg in segments:
         seg_points = [p for p in frontier_points if p.segment == seg]
         pareto = build_frontier(seg_points)
         lines.append(f"### {seg}\n")
-        lines.append("| Label | Resolution rate | 95% CI | Cost/resolved bug | Underpowered |")
-        lines.append("|---|---|---|---|---|")
-        for p in sorted(seg_points, key=lambda x: x.cost_per_resolved):
+        lines.append(
+            "| Label | Tier | Resolution rate | 95% CI | Cost/resolved bug | Underpowered |"
+        )
+        lines.append("|---|---|---|---|---|---|")
+        # Sort: clean-first, then by cost within each contamination tier
+        def _sort_key(x: FrontierPoint) -> tuple[bool, float]:
+            return (x.contamination_tier != "clean", x.cost_per_resolved)
+
+        for p in sorted(seg_points, key=_sort_key):
             on_frontier = "★" if p in pareto else ""
-            power_flag = "⚠ YES" if p.underpowered else "no"
+            power_flag_str = "⚠ YES" if p.underpowered else "no"
             lines.append(
                 f"| {on_frontier}{p.label} "
+                f"| {p.contamination_tier} "
                 f"| {p.resolution_rate:.1%} "
                 f"| ({p.ci_lower:.1%}, {p.ci_upper:.1%}) "
                 f"| ${p.cost_per_resolved:.2f} "
-                f"| {power_flag} |"
+                f"| {power_flag_str} |"
             )
         lines.append("")
 

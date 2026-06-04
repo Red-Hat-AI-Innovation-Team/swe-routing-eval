@@ -9,6 +9,7 @@ from swe_routing_eval.stats import (
     bootstrap_ci,
     connor_power,
     mcnemar_test,
+    power_flag,
     segment_stats,
 )
 from swe_routing_eval.store import RunRecord
@@ -203,3 +204,56 @@ def test_segment_stats_any_attempt_counts() -> None:
 def test_segment_stats_raises_on_empty() -> None:
     with pytest.raises(ValueError, match="No records"):
         segment_stats("kubectl", "some-model", [])
+
+
+# ---------------------------------------------------------------------------
+# instance_filter (contamination stratification) — issue #38
+# ---------------------------------------------------------------------------
+
+
+def test_segment_stats_filter_restricts_to_clean_instances() -> None:
+    records = [
+        _make_record("inst-clean", resolved=True),
+        _make_record("inst-contam", resolved=False),
+    ]
+    result = segment_stats(
+        "kubectl", "claude-opus-4-8-20251001", records,
+        seed=0, instance_filter={"inst-clean"},
+    )
+    assert result.n_instances == 1
+    assert result.pass_at_1 == pytest.approx(1.0)
+
+
+def test_segment_stats_filter_none_uses_all_instances() -> None:
+    records = [_make_record("inst-1", resolved=True), _make_record("inst-2", resolved=False)]
+    result = segment_stats("kubectl", "claude-opus-4-8-20251001", records, seed=0)
+    assert result.n_instances == 2
+
+
+def test_segment_stats_filter_raises_when_all_excluded() -> None:
+    records = [_make_record("inst-1", resolved=True)]
+    with pytest.raises(ValueError, match="No records"):
+        segment_stats("kubectl", "claude-opus-4-8-20251001", records,
+                      instance_filter={"inst-other"})
+
+
+# ---------------------------------------------------------------------------
+# power_flag — issue #39
+# ---------------------------------------------------------------------------
+
+
+def test_power_flag_underpowered() -> None:
+    underpowered, required = power_flag(n_current=10, p_discordant=0.30, delta=0.10)
+    assert underpowered is True
+    assert required > 10
+
+
+def test_power_flag_adequately_powered() -> None:
+    underpowered, required = power_flag(n_current=300, p_discordant=0.30, delta=0.10)
+    assert underpowered is False
+    assert required <= 300
+
+
+def test_power_flag_required_n_matches_connor() -> None:
+    _, required = power_flag(n_current=50, p_discordant=0.25, delta=0.12)
+    assert required == connor_power(p_discordant=0.25, delta=0.12)
