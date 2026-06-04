@@ -81,12 +81,18 @@ class GraderError(Exception):
 class SubprocessGrader:
     """Calls the SWE-benchify grade binary via stdin/stdout JSON (issue #4).
 
-    Binary contract (issue #2):
-      stdin:  JSON with instance metadata + candidate_patch
-      stdout: JSON with resolved, compiled, f2p[], p2p[], telemetry
-      stderr: logged on non-zero exit
+    Full contract: docs/grade-binary-contract.md
 
-    Raise GraderError for missing binary, timeout, non-zero exit, or bad JSON.
+    Summary:
+      stdin:  JSON — instance metadata + candidate_patch
+      stdout: JSON — resolved, compiled, f2p[], p2p[], telemetry
+      The binary applies patches in order: base_commit → candidate → test_patch.
+      It strips test-file hunks from the candidate before applying (grader-side
+      enforcement of the anti-reward-hacking rule; this evaluator also checks via
+      touches_test_files() before calling the binary — both must agree).
+      stderr: logged on non-zero exit (infrastructure failure only)
+
+    Raises GraderError for: missing binary, timeout, non-zero exit, bad JSON.
     """
 
     _TIMEOUT_S = 600
