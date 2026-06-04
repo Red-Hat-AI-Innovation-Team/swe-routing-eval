@@ -118,11 +118,11 @@ def _build_frontier_points(
             cost_per_res = price_table.cost_per_resolved(recs)
             p_discordant = p_discordant_by_seg.get(seg, 0.3)
             try:
-                underpowered, _ = power_flag(
+                underpowered, required_n = power_flag(
                     stats.n_instances, p_discordant, delta, target_power=target_power
                 )
             except ValueError:
-                underpowered = True  # formula undefined → treat as underpowered
+                underpowered, required_n = True, 0  # formula undefined → underpowered, N unknown
 
             points.append(FrontierPoint(
                 segment=seg,
@@ -134,6 +134,8 @@ def _build_frontier_points(
                 ci_upper=stats.ci_upper,
                 underpowered=underpowered,
                 contamination_tier=contam_tier,
+                n_instances=stats.n_instances,
+                required_n=required_n,
             ))
 
     # Cascade points (cheap → frontier) per segment
