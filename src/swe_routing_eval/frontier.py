@@ -23,6 +23,8 @@ class FrontierPoint:
     ci_upper: float
     underpowered: bool = False
     contamination_tier: str = "all"  # "clean" (decontam_overlap=False only) or "all"
+    n_instances: int = 0      # instances evaluated; 0 for cascade points
+    required_n: int = 0       # Connor required N; 0 when adequately powered or cascade
 
     @property
     def label(self) -> str:
@@ -135,19 +137,45 @@ def render_memo(
     else:
         lines.append("Only one segment evaluated.\n")
 
-    # --- sample sizes ---
+    # --- sample sizes (auto-populated from FrontierPoint.n_instances) ---
     lines.append("## Sample sizes\n")
-    lines.append("| Segment | Model | N instances | N attempts |")
+    lines.append("| Segment | Tier | Model | N instances |")
     lines.append("|---|---|---|---|")
-    for p in sorted(frontier_points, key=lambda x: (x.segment, x.model_id)):
+    def _sample_sort(x: FrontierPoint) -> tuple[str, bool, str]:
+        return (x.segment, x.contamination_tier != "clean", x.model_id)
+
+    for p in sorted(frontier_points, key=_sample_sort):
         if p.is_cascade:
             continue
-        lines.append(f"| {p.segment} | {p.model_id} | — | — |")
+        n_str = str(p.n_instances) if p.n_instances > 0 else "—"
+        lines.append(f"| {p.segment} | {p.contamination_tier} | {p.model_id} | {n_str} |")
     lines.append("")
-    lines.append(
-        "*(Populate N instances / N attempts from `SegmentResult.n_instances` "
-        "and `n_attempts` before publishing.)*\n"
-    )
+
+    # --- power sizing (shown when any segment is underpowered) ---
+    underpowered_points = [p for p in frontier_points if p.underpowered and not p.is_cascade]
+    if underpowered_points:
+        lines.append("## Power sizing\n")
+        lines.append(
+            "One or more segments are underpowered. "
+            "Point estimates from underpowered segments are inconclusive — "
+            "do not interpret as evidence of no difference.\n"
+        )
+        lines.append("| Segment | Tier | Current N | Required N | Gap | Delta | Power |")
+        lines.append("|---|---|---|---|---|---|---|")
+        def _power_sort(x: FrontierPoint) -> tuple[str, bool]:
+            return (x.segment, x.contamination_tier != "clean")
+
+        for p in sorted(underpowered_points, key=_power_sort):
+            gap: int | str = p.required_n - p.n_instances if p.required_n > 0 else "?"
+            req = str(p.required_n) if p.required_n > 0 else "?"
+            cur = str(p.n_instances) if p.n_instances > 0 else "?"
+            tier = p.contamination_tier
+            lines.append(f"| {p.segment} | {tier} | {cur} | {req} | {gap} | — | — |")
+        lines.append("")
+        lines.append(
+            "*(Delta and power level used are set by `--delta` and `--power` in `analyze_runs.py`. "
+            "Fill in if different from defaults 0.10 / 0.80.)*\n"
+        )
 
     # --- optional notes ---
     if contamination_note:

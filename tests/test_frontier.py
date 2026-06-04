@@ -176,3 +176,53 @@ def test_render_memo_shows_tier_column() -> None:
     memo = render_memo([pt])
     assert "Tier" in memo
     assert "clean" in memo
+
+
+# ---------------------------------------------------------------------------
+# n_instances, required_n and power-sizing section — issue #46
+# ---------------------------------------------------------------------------
+
+
+def test_frontier_point_default_n_fields() -> None:
+    pt = _pt()
+    assert pt.n_instances == 0
+    assert pt.required_n == 0
+
+
+def test_render_memo_sample_sizes_shows_n_instances() -> None:
+    pt = _pt("kubectl", underpowered=False)
+    pt.n_instances = 42
+    memo = render_memo([pt])
+    assert "42" in memo
+
+
+def test_render_memo_no_power_section_when_all_powered() -> None:
+    pt = _pt("kubectl", underpowered=False)
+    pt.n_instances = 300
+    pt.required_n = 234
+    memo = render_memo([pt])
+    assert "Power sizing" not in memo
+
+
+def test_render_memo_power_section_appears_when_underpowered() -> None:
+    pt = _pt("kubectl", underpowered=True)
+    pt.n_instances = 20
+    pt.required_n = 234
+    memo = render_memo([pt])
+    assert "Power sizing" in memo
+    assert "20" in memo    # current N
+    assert "234" in memo   # required N
+    assert "214" in memo   # gap (234 - 20)
+
+
+def test_render_memo_power_section_lists_both_segments() -> None:
+    kubectl = _pt("kubectl", underpowered=True)
+    kubectl.n_instances = 15
+    kubectl.required_n = 100
+    etcd = _pt("etcd", underpowered=True)
+    etcd.n_instances = 30
+    etcd.required_n = 150
+    memo = render_memo([kubectl, etcd])
+    assert "kubectl" in memo
+    assert "etcd" in memo
+    assert "Power sizing" in memo

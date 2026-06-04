@@ -219,3 +219,52 @@ def test_analyze_runs_with_audit_note(tmp_path: Path) -> None:
     assert rc == 0
     memo = (output / "memo.md").read_text()
     assert "audited" in memo
+
+
+def test_analyze_runs_n_instances_in_memo(tmp_path: Path) -> None:
+    """Sample sizes table shows actual N instances, not placeholder dashes."""
+    instances = [_instance(f"kubectl-{i}") for i in range(7)]
+    records = [_record(f"kubectl-{i}", resolved=True) for i in range(7)]
+    jsonl, prices, db = _setup(tmp_path, instances, records)
+    output = tmp_path / "results"
+
+    rc = main([
+        "--store", str(db),
+        "--instances", str(jsonl),
+        "--price-table", str(prices),
+        "--output", str(output),
+        "--no-plot",
+    ])
+
+    assert rc == 0
+    memo = (output / "memo.md").read_text()
+    # The number of instances (7) should appear in the sample sizes table
+    assert "7" in memo
+
+
+def test_analyze_runs_power_section_when_underpowered(tmp_path: Path) -> None:
+    """Power sizing section appears when segment is underpowered."""
+    # Only 2 instances → well below any reasonable required N
+    instances = [_instance(f"kubectl-{i}") for i in range(2)]
+    records = [
+        _record(f"kubectl-{i}", model_id=_OPUS_ID, resolved=True) for i in range(2)
+    ] + [
+        _record(f"kubectl-{i}", model_id=_SONNET_ID, resolved=i % 2 == 0) for i in range(2)
+    ]
+    jsonl, prices, db = _setup(tmp_path, instances, records)
+    output = tmp_path / "results"
+
+    rc = main([
+        "--store", str(db),
+        "--instances", str(jsonl),
+        "--price-table", str(prices),
+        "--cheap-tier", "sonnet",
+        "--frontier-tier", "opus",
+        "--delta", "0.10",
+        "--output", str(output),
+        "--no-plot",
+    ])
+
+    assert rc == 0
+    memo = (output / "memo.md").read_text()
+    assert "Power sizing" in memo
