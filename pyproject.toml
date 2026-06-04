@@ -21,6 +21,7 @@ analysis = [
 ]
 dev = [
     "pytest>=8.0",
+    "pytest-xdist>=3.0",
     "ruff>=0.4",
     "mypy>=1.10",
     "scipy>=1.13",
