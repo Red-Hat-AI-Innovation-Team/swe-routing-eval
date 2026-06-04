@@ -235,8 +235,12 @@ class Orchestrator:
         grade = safe_grade(instance, attempt.candidate_patch, self._grader)
         wall_clock_s = time.monotonic() - t0
 
+        assert attempt.model_id == model_id, (
+            f"Scaffold returned model_id={attempt.model_id!r} "
+            f"but orchestrator expected {model_id!r}"
+        )
         return RunRecord(
-            model_id=model_id,
+            model_id=attempt.model_id,
             instance_id=instance.instance_id,
             attempt_idx=attempt_idx,
             seed=seed,

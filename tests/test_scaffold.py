@@ -140,6 +140,7 @@ def test_run_loop_stops_on_finish_tool(tmp_path: Path) -> None:
             result = _run_loop(client, INSTANCE, tmp_path, "some-model-id", seed=7)
 
     assert isinstance(result, AttemptResult)
+    assert result.model_id == "some-model-id"
     assert result.scaffold_version == SCAFFOLD_VERSION
     assert result.seed == 7
     assert result.turns == 2
