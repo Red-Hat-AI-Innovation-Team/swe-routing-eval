@@ -65,16 +65,23 @@ def _instance(instance_id: str = "kubectl-1") -> SWEbenchInstance:
 
 def _mock_scaffold(patch_text: str = "diff --git ...") -> MagicMock:
     scaffold = MagicMock(spec=Scaffold)
-    scaffold.run.return_value = AttemptResult(
-        candidate_patch=patch_text,
-        seed=0,
-        scaffold_version="v0.1.0",
-        tokens_in=1000,
-        tokens_out=200,
-        turns=5,
-        tool_calls=8,
-        wall_clock_s=30.0,
-    )
+
+    def _run(
+        instance: object, workspace_dir: object, model_id: str, seed: int
+    ) -> AttemptResult:
+        return AttemptResult(
+            candidate_patch=patch_text,
+            model_id=model_id,  # echo back so the orchestrator assertion passes
+            seed=seed,
+            scaffold_version="v0.1.0",
+            tokens_in=1000,
+            tokens_out=200,
+            turns=5,
+            tool_calls=8,
+            wall_clock_s=30.0,
+        )
+
+    scaffold.run.side_effect = _run
     return scaffold
 
 

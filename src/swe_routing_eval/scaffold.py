@@ -78,6 +78,7 @@ class AttemptResult:
     """Telemetry and output for a single scaffold attempt."""
 
     candidate_patch: str
+    model_id: str
     seed: int
     scaffold_version: str
     tokens_in: int
@@ -196,6 +197,7 @@ def _run_loop(
 
     return AttemptResult(
         candidate_patch=candidate_patch,
+        model_id=model_id,
         seed=seed,
         scaffold_version=SCAFFOLD_VERSION,
         tokens_in=tokens_in,
