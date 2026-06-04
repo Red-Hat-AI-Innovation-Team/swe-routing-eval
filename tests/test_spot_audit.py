@@ -22,6 +22,7 @@ _render_bundle = _mod._render_bundle
 _bundle_key = _mod._bundle_key
 _load_verdicts = _mod._load_verdicts
 _save_verdicts = _mod._save_verdicts
+format_memo_note = _mod.format_memo_note
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -213,3 +214,37 @@ def test_summary_command_prints_totals(
     assert "pass" in out
     assert "fail" in out
     assert "1/3" in out or "33%" in out
+
+
+# ---------------------------------------------------------------------------
+# format_memo_note — issue #40
+# ---------------------------------------------------------------------------
+
+
+def test_format_memo_note_no_verdicts(tmp_path: Path) -> None:
+    note = format_memo_note(tmp_path)
+    assert "No" in note or "not" in note.lower()
+
+
+def test_format_memo_note_all_pass(tmp_path: Path) -> None:
+    _save_verdicts(tmp_path, {"a": "pass", "b": "pass", "c": "pass"})
+    note = format_memo_note(tmp_path)
+    assert "3" in note
+    assert "0/3" in note or "0%" in note
+
+
+def test_format_memo_note_with_failures(tmp_path: Path) -> None:
+    _save_verdicts(tmp_path, {"a": "pass", "b": "fail", "c": "warn", "d": "fail"})
+    note = format_memo_note(tmp_path)
+    assert "4" in note          # total
+    assert "2/4" in note        # n_fail/total
+    assert "50%" in note        # pct_wrong
+    assert "1/4" in note        # n_warn/total
+
+
+def test_format_memo_note_is_single_sentence(tmp_path: Path) -> None:
+    _save_verdicts(tmp_path, {"a": "pass", "b": "fail"})
+    note = format_memo_note(tmp_path)
+    assert isinstance(note, str) and len(note) > 10
+    # Should be usable directly as render_memo(spot_audit_note=note)
+    assert "\n\n" not in note
