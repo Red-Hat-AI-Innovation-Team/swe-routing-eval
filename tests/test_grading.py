@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from swe_routing_eval.grading import (
-    GradeResult,
     GraderError,
+    GradeResult,
     SubprocessGrader,
     TestResult,
     apply_quarantine,
