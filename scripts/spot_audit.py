@@ -275,6 +275,42 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Memo note formatter (issue #40)
+# ---------------------------------------------------------------------------
+
+
+def format_memo_note(audit_dir: Path) -> str:
+    """Format the spot-audit verdict summary for insertion into render_memo().
+
+    Returns a single ready-to-use sentence for the spot_audit_note parameter
+    of render_memo(). The analysis script calls this automatically when an
+    audit directory exists.
+
+    Args:
+        audit_dir: directory containing verdicts.json produced by `record`.
+
+    Returns:
+        A concise summary string, e.g.:
+        "10 resolved attempts audited; 1/10 (10%) judged passing-but-wrong;
+         2/10 flagged for review."
+        If no verdicts have been recorded, returns a placeholder string.
+    """
+    verdicts = _load_verdicts(audit_dir)
+    if not verdicts:
+        return "No spot-audit verdicts recorded yet."
+
+    total = len(verdicts)
+    n_fail = sum(1 for v in verdicts.values() if v == "fail")
+    n_warn = sum(1 for v in verdicts.values() if v == "warn")
+    pct_wrong = n_fail / total * 100
+    return (
+        f"{total} resolved attempt(s) audited; "
+        f"{n_fail}/{total} ({pct_wrong:.0f}%) judged passing-but-wrong; "
+        f"{n_warn}/{total} flagged for review."
+    )
+
+
+# ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
 

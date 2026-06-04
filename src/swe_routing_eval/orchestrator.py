@@ -239,7 +239,7 @@ class Orchestrator:
             f"Scaffold returned model_id={attempt.model_id!r} "
             f"but orchestrator expected {model_id!r}"
         )
-        return RunRecord(
+        record = RunRecord(
             model_id=attempt.model_id,
             instance_id=instance.instance_id,
             attempt_idx=attempt_idx,
@@ -256,5 +256,6 @@ class Orchestrator:
             turns=attempt.turns,
             tool_calls=attempt.tool_calls,
             wall_clock_s=wall_clock_s,
-            cost_usd=0.0,  # populated by cost model (issue #13)
         )
+        record.cost_usd = self._price_table.compute_cost(record)
+        return record
