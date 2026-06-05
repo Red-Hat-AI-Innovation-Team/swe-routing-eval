@@ -112,7 +112,7 @@ def render_memo(
         def _sort_key(x: FrontierPoint) -> tuple[bool, float]:
             return (x.contamination_tier != "clean", x.cost_per_resolved)
 
-        for p in sorted(seg_points, key=_sort_key):
+        for p in sorted((p for p in seg_points if not p.is_cascade), key=_sort_key):
             on_frontier = "★" if p in pareto else ""
             power_flag_str = "⚠ YES" if p.underpowered else "no"
             lines.append(

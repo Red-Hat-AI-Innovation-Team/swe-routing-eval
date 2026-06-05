@@ -175,7 +175,10 @@ def test_analyze_runs_with_cascade_point(tmp_path: Path) -> None:
 
     assert rc == 0
     memo = (output / "memo.md").read_text()
-    assert "cascade" in memo.lower()
+    # Cascade rows are excluded from the memo results table (they're analytical
+    # artifacts, not concrete model choices). Verify models appear instead.
+    assert "sonnet" in memo.lower()
+    assert "opus" in memo.lower()
 
 
 def test_analyze_runs_empty_store_returns_nonzero(tmp_path: Path) -> None:
