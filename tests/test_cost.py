@@ -114,33 +114,42 @@ def test_cost_per_resolved_raises_on_empty() -> None:
 
 def test_cascade_fully_cheap() -> None:
     """If cheap resolves everything, cascade = cheap."""
-    p, c = cascade_point(p_cheap=1.0, e_cost_cheap=0.10,
-                          p_frontier=0.9, e_cost_frontier=0.50)
+    p, c = cascade_point([(1.0, 0.10), (0.9, 0.50)])
     assert p == pytest.approx(1.0)
     assert c == pytest.approx(0.10)
 
 
 def test_cascade_cheap_zero_resolution() -> None:
     """If cheap never resolves, cascade = frontier cost + cheap cost."""
-    p, c = cascade_point(p_cheap=0.0, e_cost_cheap=0.05,
-                          p_frontier=0.8, e_cost_frontier=0.40)
+    p, c = cascade_point([(0.0, 0.05), (0.8, 0.40)])
     assert p == pytest.approx(0.8)
     assert c == pytest.approx(0.45)
 
 
 def test_cascade_mixed() -> None:
-    p, c = cascade_point(p_cheap=0.5, e_cost_cheap=0.10,
-                          p_frontier=0.8, e_cost_frontier=0.50)
+    p, c = cascade_point([(0.5, 0.10), (0.8, 0.50)])
     # p = 0.5 + 0.5 * 0.8 = 0.90
     # c = 0.10 + 0.5 * 0.50 = 0.35
     assert p == pytest.approx(0.90)
     assert c == pytest.approx(0.35)
 
 
+def test_cascade_three_tiers() -> None:
+    # haiku: p=0.2, c=0.05; sonnet: p=0.5, c=0.20; opus: p=0.8, c=1.00
+    # p = 0.2 + 0.8*0.5 + 0.8*0.5*0.8 = 0.2 + 0.4 + 0.32 = 0.92
+    # c = 0.05 + 0.8*0.20 + 0.8*0.5*1.00 = 0.05 + 0.16 + 0.40 = 0.61
+    p, c = cascade_point([(0.2, 0.05), (0.5, 0.20), (0.8, 1.00)])
+    assert p == pytest.approx(0.92)
+    assert c == pytest.approx(0.61)
+
+
+def test_cascade_raises_on_fewer_than_two_tiers() -> None:
+    with pytest.raises(ValueError, match="at least 2"):
+        cascade_point([(0.5, 0.10)])
+
+
 def test_cascade_raises_on_out_of_range() -> None:
-    with pytest.raises(ValueError, match="p_cheap"):
-        cascade_point(p_cheap=1.5, e_cost_cheap=0.1,
-                      p_frontier=0.5, e_cost_frontier=0.5)
-    with pytest.raises(ValueError, match="p_frontier"):
-        cascade_point(p_cheap=0.5, e_cost_cheap=0.1,
-                      p_frontier=-0.1, e_cost_frontier=0.5)
+    with pytest.raises(ValueError, match=r"tiers\[0\]"):
+        cascade_point([(1.5, 0.1), (0.5, 0.5)])
+    with pytest.raises(ValueError, match=r"tiers\[1\]"):
+        cascade_point([(0.5, 0.1), (-0.1, 0.5)])

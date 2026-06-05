@@ -11,9 +11,8 @@ Usage::
         --store runs.db \\
         --instances instances.jsonl \\
         --price-table config/prices.json \\
-        --tiers opus sonnet \\
-        --cheap-tier sonnet \\
-        --frontier-tier opus \\
+        --tiers opus sonnet haiku \\
+        --cascade-tiers haiku sonnet opus \\
         --output results/ \\
         [--audit-dir audit/] \\
         [--delta 0.10] \\
@@ -70,8 +69,7 @@ def _build_frontier_points(
     records: list[RunRecord],
     price_table: PriceTable,
     tiers: list[str],
-    cheap_tier: str | None,
-    frontier_tier: str | None,
+    cascade_tiers: list[str],
     delta: float,
     target_power: float,
 ) -> list[FrontierPoint]:
@@ -93,13 +91,13 @@ def _build_frontier_points(
         if not inst.decontam_overlap:
             clean_ids_by_seg[inst.product].add(inst.instance_id)
 
-    # Estimate p_discordant per segment from cheap × frontier pair
+    # Estimate p_discordant per segment using the cheapest and most expensive cascade tiers.
     p_discordant_by_seg: dict[str, float] = {}
-    if cheap_tier and frontier_tier:
+    if len(cascade_tiers) >= 2:
         segments_seen = {seg for seg, _ in groups}
         for seg in segments_seen:
-            cheap_recs = groups.get((seg, _resolve_model_id(cheap_tier, groups, seg)), [])
-            front_recs = groups.get((seg, _resolve_model_id(frontier_tier, groups, seg)), [])
+            cheap_recs = groups.get((seg, _resolve_model_id(cascade_tiers[0], groups, seg)), [])
+            front_recs = groups.get((seg, _resolve_model_id(cascade_tiers[-1], groups, seg)), [])
             p_discordant_by_seg[seg] = _estimate_p_discordant(cheap_recs, front_recs)
 
     points: list[FrontierPoint] = []
@@ -138,37 +136,46 @@ def _build_frontier_points(
                 required_n=required_n,
             ))
 
-    # Cascade points (cheap → frontier) per segment
-    if cheap_tier and frontier_tier:
-        for seg in {p.segment for p in points}:
-            cheap_mid = _resolve_model_id(cheap_tier, groups, seg)
-            front_mid = _resolve_model_id(frontier_tier, groups, seg)
-            cheap_recs = groups.get((seg, cheap_mid), [])
-            front_recs = groups.get((seg, front_mid), [])
-            if not cheap_recs or not front_recs:
-                continue
-            for contam_tier, filt in [("clean", clean_ids_by_seg[seg]), ("all", None)]:
-                c_recs = [r for r in cheap_recs if filt is None or r.instance_id in filt]
-                f_recs = [r for r in front_recs if filt is None or r.instance_id in filt]
-                if not c_recs or not f_recs:
+    # Cascade points: all adjacent pairs + full chain (if > 2 tiers).
+    if len(cascade_tiers) >= 2:
+        segments = {p.segment for p in points}
+        # Build the list of tier sequences to evaluate.
+        tier_sequences: list[list[str]] = []
+        for i in range(len(cascade_tiers) - 1):
+            tier_sequences.append(cascade_tiers[i : i + 2])  # adjacent pair
+        if len(cascade_tiers) > 2:
+            tier_sequences.append(cascade_tiers)  # full chain
+
+        for seg in segments:
+            for seq in tier_sequences:
+                mids = [_resolve_model_id(t, groups, seg) for t in seq]
+                recs_by_mid = [groups.get((seg, mid), []) for mid in mids]
+                if any(not r for r in recs_by_mid):
                     continue
-                p_c = sum(r.resolved for r in c_recs) / len(c_recs)
-                e_c = price_table.expected_cost(c_recs)
-                p_f = sum(r.resolved for r in f_recs) / len(f_recs)
-                e_f = price_table.expected_cost(f_recs)
-                p_casc, e_casc = cascade_point(p_c, e_c, p_f, e_f)
-                cost_per_res = e_casc / p_casc if p_casc > 0 else float("inf")
-                points.append(FrontierPoint(
-                    segment=seg,
-                    model_id=f"{cheap_mid}→{front_mid}",
-                    is_cascade=True,
-                    cost_per_resolved=cost_per_res,
-                    resolution_rate=p_casc,
-                    ci_lower=p_casc,   # cascade CI: use point estimate (no bootstrap here)
-                    ci_upper=p_casc,
-                    underpowered=False,
-                    contamination_tier=contam_tier,
-                ))
+                for contam_tier, filt in [("clean", clean_ids_by_seg[seg]), ("all", None)]:
+                    filtered = [
+                        [r for r in recs if filt is None or r.instance_id in filt]
+                        for recs in recs_by_mid
+                    ]
+                    if any(not f for f in filtered):
+                        continue
+                    tier_stats = [
+                        (sum(r.resolved for r in f) / len(f), price_table.expected_cost(f))
+                        for f in filtered
+                    ]
+                    p_casc, e_casc = cascade_point(tier_stats)
+                    cost_per_res = e_casc / p_casc if p_casc > 0 else float("inf")
+                    points.append(FrontierPoint(
+                        segment=seg,
+                        model_id="→".join(mids),
+                        is_cascade=True,
+                        cost_per_resolved=cost_per_res,
+                        resolution_rate=p_casc,
+                        ci_lower=p_casc,
+                        ci_upper=p_casc,
+                        underpowered=False,
+                        contamination_tier=contam_tier,
+                    ))
 
     return points
 
@@ -217,12 +224,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Restrict to these model tier labels (substring match against model_id)"
     )
     parser.add_argument(
-        "--cheap-tier", default=None, metavar="TIER",
-        help="Tier label for the cheap leg of the cascade (e.g. sonnet)"
-    )
-    parser.add_argument(
-        "--frontier-tier", default=None, metavar="TIER",
-        help="Tier label for the frontier leg of the cascade (e.g. opus)"
+        "--cascade-tiers", nargs="+", default=[], metavar="TIER",
+        help="Ordered tier labels for cascade analysis, cheapest first "
+             "(e.g. --cascade-tiers haiku sonnet opus). Emits cascade points "
+             "for every adjacent pair and the full chain."
     )
     parser.add_argument(
         "--output", type=Path, default=Path("results"), metavar="DIR",
@@ -268,8 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         records=all_records,
         price_table=price_table,
         tiers=args.tiers or [],
-        cheap_tier=args.cheap_tier,
-        frontier_tier=args.frontier_tier,
+        cascade_tiers=args.cascade_tiers,
         delta=args.delta,
         target_power=args.power,
     )

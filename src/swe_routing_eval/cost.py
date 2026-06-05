@@ -6,7 +6,7 @@ Cost axis uses Vertex pricing at RH committed-use rates.
 Key metrics:
   expected_cost(records)  — mean cost per attempt
   cost_per_resolved(records) — E[cost] / p_hat
-  cascade_point(...)      — two-tier cascade resolution rate and expected cost
+  cascade_point(...)      — n-tier cascade resolution rate and expected cost
 """
 
 from __future__ import annotations
@@ -58,33 +58,33 @@ class PriceTable:
         return e_cost / p_hat
 
 
-def cascade_point(
-    p_cheap: float,
-    e_cost_cheap: float,
-    p_frontier: float,
-    e_cost_frontier: float,
-) -> tuple[float, float]:
-    """Two-tier cascade: run cheap first, escalate to frontier only if unresolved.
+def cascade_point(tiers: list[tuple[float, float]]) -> tuple[float, float]:
+    """N-tier cascade: run each tier in order, escalating only if unresolved.
 
     Computes cascade statistics analytically — no additional model runs needed.
 
     Args:
-        p_cheap: per-attempt resolution rate for the cheap tier.
-        e_cost_cheap: expected cost per attempt for the cheap tier.
-        p_frontier: per-attempt resolution rate for the frontier tier.
-        e_cost_frontier: expected cost per attempt for the frontier tier.
+        tiers: list of (p_resolve, e_cost) pairs ordered cheapest-first.
+               Must have at least 2 entries.
 
     Returns:
         (cascade_resolution_rate, cascade_expected_cost)
 
-        cascade_resolution_rate = p_cheap + (1 − p_cheap) × p_frontier
-        cascade_expected_cost   = E[c_cheap] + (1 − p_cheap) × E[c_frontier]
+        For tiers [(p0,c0), (p1,c1), ..., (pn,cn)]:
+          p_cascade = p0 + (1−p0)·p1 + (1−p0)·(1−p1)·p2 + …
+          e_cost    = c0 + (1−p0)·c1 + (1−p0)·(1−p1)·c2 + …
     """
-    if not (0.0 <= p_cheap <= 1.0):
-        raise ValueError(f"p_cheap must be in [0, 1], got {p_cheap}")
-    if not (0.0 <= p_frontier <= 1.0):
-        raise ValueError(f"p_frontier must be in [0, 1], got {p_frontier}")
+    if len(tiers) < 2:
+        raise ValueError(f"cascade requires at least 2 tiers, got {len(tiers)}")
+    for i, (p, _) in enumerate(tiers):
+        if not (0.0 <= p <= 1.0):
+            raise ValueError(f"tiers[{i}] p={p} must be in [0, 1]")
 
-    p_cascade = p_cheap + (1.0 - p_cheap) * p_frontier
-    e_cost_cascade = e_cost_cheap + (1.0 - p_cheap) * e_cost_frontier
+    p_cascade = 0.0
+    e_cost_cascade = 0.0
+    p_fail = 1.0  # probability all previous tiers failed
+    for p, e_cost in tiers:
+        p_cascade += p_fail * p
+        e_cost_cascade += p_fail * e_cost
+        p_fail *= (1.0 - p)
     return p_cascade, e_cost_cascade
