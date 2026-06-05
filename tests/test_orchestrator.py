@@ -9,7 +9,7 @@ import pytest
 
 from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
-from swe_routing_eval.grading import GradeResult
+from swe_routing_eval.grading import GradeResult, GraderError
 from swe_routing_eval.ingest import SWEbenchInstance
 from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
 from swe_routing_eval.scaffold import AttemptResult, Scaffold
@@ -234,6 +234,28 @@ def test_run_populates_cost_usd_from_price_table(tmp_path: Path) -> None:
     # cost = 1000/1000 * 0.015 + 200/1000 * 0.075 = 0.015 + 0.015 = 0.030
     assert record.cost_usd == pytest.approx(0.030)
     assert record.cost_usd != 0.0
+
+
+def test_grader_error_is_persisted_as_sentinel_record(tmp_path: Path) -> None:
+    """GraderError must write a record so the attempt is not retried on next run."""
+    store = FileStore(tmp_path / "runs.db")
+
+    with patch(
+        "swe_routing_eval.orchestrator.safe_grade",
+        side_effect=GraderError("Docker timeout after 600s"),
+    ):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=1, max_workers=1)
+        orc.run(cfg, [_instance()], _workspace_factory, BudgetConfig(max_spend_usd=100.0))
+
+    records = store.list_all()
+    assert len(records) == 1
+    r = records[0]
+    assert r.grader_error == "Docker timeout after 600s"
+    assert r.resolved is False
+    assert r.compiled is False
+    assert r.f2p_results == []
+    assert r.p2p_results == []
 
 
 def test_run_raises_before_inference_if_budget_exceeded(tmp_path: Path) -> None:

@@ -32,6 +32,7 @@ class RunRecord:
     tool_calls: int
     wall_clock_s: float
     cost_usd: float = field(default=0.0)
+    grader_error: str = field(default="")
 
 
 _CREATE_TABLE = """
@@ -53,8 +54,13 @@ _CREATE_TABLE = """
         tool_calls          INTEGER NOT NULL,
         wall_clock_s        REAL    NOT NULL,
         cost_usd            REAL    NOT NULL DEFAULT 0.0,
+        grader_error        TEXT    NOT NULL DEFAULT '',
         PRIMARY KEY (model_id, instance_id, attempt_idx)
     )
+"""
+
+_ADD_GRADER_ERROR_COLUMN = """
+    ALTER TABLE runs ADD COLUMN grader_error TEXT NOT NULL DEFAULT ''
 """
 
 _INSERT = """
@@ -62,7 +68,7 @@ _INSERT = """
         :model_id, :instance_id, :attempt_idx, :seed, :scaffold_version,
         :candidate_patch, :resolved, :compiled, :rejected_test_edit,
         :f2p_results, :p2p_results, :tokens_in, :tokens_out, :turns,
-        :tool_calls, :wall_clock_s, :cost_usd
+        :tool_calls, :wall_clock_s, :cost_usd, :grader_error
     )
 """
 
@@ -85,6 +91,10 @@ class FileStore(Store):
         self._conn = sqlite3.connect(str(path))
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_CREATE_TABLE)
+        # Migrate older DBs that predate the grader_error column.
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(runs)")}
+        if "grader_error" not in existing:
+            self._conn.execute(_ADD_GRADER_ERROR_COLUMN)
         self._conn.commit()
 
     def save(self, record: RunRecord) -> None:
@@ -118,4 +128,5 @@ def _row_to_record(row: sqlite3.Row) -> RunRecord:
     d["resolved"] = bool(d["resolved"])
     d["compiled"] = bool(d["compiled"])
     d["rejected_test_edit"] = bool(d["rejected_test_edit"])
+    d.setdefault("grader_error", "")
     return RunRecord(**d)

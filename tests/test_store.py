@@ -82,3 +82,53 @@ def test_store_persists_across_reopen(tmp_path: Path) -> None:
     FileStore(db_path).save(_make_record())
     fetched = FileStore(db_path).get("claude-opus-4-8", "kubectl-12345", 0)
     assert fetched.instance_id == "kubectl-12345"
+
+
+def test_grader_error_round_trips(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+    store.save(_make_record(grader_error="Docker timeout after 600s"))
+    fetched = store.get("claude-opus-4-8", "kubectl-12345", 0)
+    assert fetched.grader_error == "Docker timeout after 600s"
+
+
+def test_grader_error_defaults_to_empty_string(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+    store.save(_make_record())
+    fetched = store.get("claude-opus-4-8", "kubectl-12345", 0)
+    assert fetched.grader_error == ""
+
+
+def test_migration_adds_grader_error_column_to_old_db(tmp_path: Path) -> None:
+    """FileStore must silently upgrade a DB that predates the grader_error column."""
+    import sqlite3
+
+    db_path = tmp_path / "old.db"
+
+    # Build a schema and row that match the pre-migration layout (no grader_error column).
+    old_schema = """
+        CREATE TABLE runs (
+            model_id TEXT NOT NULL, instance_id TEXT NOT NULL,
+            attempt_idx INTEGER NOT NULL, seed INTEGER NOT NULL,
+            scaffold_version TEXT NOT NULL, candidate_patch TEXT NOT NULL,
+            resolved INTEGER NOT NULL, compiled INTEGER NOT NULL,
+            rejected_test_edit INTEGER NOT NULL,
+            f2p_results TEXT NOT NULL, p2p_results TEXT NOT NULL,
+            tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL,
+            turns INTEGER NOT NULL, tool_calls INTEGER NOT NULL,
+            wall_clock_s REAL NOT NULL, cost_usd REAL NOT NULL DEFAULT 0.0,
+            PRIMARY KEY (model_id, instance_id, attempt_idx)
+        )
+    """
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(old_schema)
+    conn.execute(
+        "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("m", "i", 0, 1, "v0", "", 0, 1, 0, "[]", "[]", 100, 50, 3, 5, 10.0, 0.0),
+    )
+    conn.commit()
+    conn.close()
+
+    # Opening with FileStore should migrate and allow reads without error.
+    store = FileStore(db_path)
+    record = store.get("m", "i", 0)
+    assert record.grader_error == ""

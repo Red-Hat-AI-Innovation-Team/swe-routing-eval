@@ -21,7 +21,7 @@ from pathlib import Path
 
 from swe_routing_eval.budget import BudgetConfig, dry_run_estimate
 from swe_routing_eval.cost import PriceTable
-from swe_routing_eval.grading import Grader, safe_grade
+from swe_routing_eval.grading import Grader, GraderError, safe_grade
 from swe_routing_eval.ingest import SWEbenchInstance
 from swe_routing_eval.scaffold import AttemptResult, Scaffold
 from swe_routing_eval.store import RunRecord, Store
@@ -232,13 +232,24 @@ class Orchestrator:
             model_id=model_id,
             seed=seed,
         )
-        grade = safe_grade(instance, attempt.candidate_patch, self._grader)
         wall_clock_s = time.monotonic() - t0
 
         assert attempt.model_id == model_id, (
             f"Scaffold returned model_id={attempt.model_id!r} "
             f"but orchestrator expected {model_id!r}"
         )
+
+        try:
+            grade = safe_grade(instance, attempt.candidate_patch, self._grader)
+            grader_error = ""
+        except GraderError as exc:
+            logger.error(
+                "GraderError for (%s, %s, %d): %s",
+                model_id, instance.instance_id, attempt_idx, exc,
+            )
+            grade = None
+            grader_error = str(exc)
+
         record = RunRecord(
             model_id=attempt.model_id,
             instance_id=instance.instance_id,
@@ -246,16 +257,17 @@ class Orchestrator:
             seed=seed,
             scaffold_version=attempt.scaffold_version,
             candidate_patch=attempt.candidate_patch,
-            resolved=grade.resolved,
-            compiled=grade.compiled,
-            rejected_test_edit=grade.rejected_test_edit,
-            f2p_results=[{"name": r.name, "passed": r.passed} for r in grade.f2p_results],
-            p2p_results=[{"name": r.name, "passed": r.passed} for r in grade.p2p_results],
+            resolved=False if grade is None else grade.resolved,
+            compiled=False if grade is None else grade.compiled,
+            rejected_test_edit=False if grade is None else grade.rejected_test_edit,
+            f2p_results=[] if grade is None else [{"name": r.name, "passed": r.passed} for r in grade.f2p_results],
+            p2p_results=[] if grade is None else [{"name": r.name, "passed": r.passed} for r in grade.p2p_results],
             tokens_in=attempt.tokens_in,
             tokens_out=attempt.tokens_out,
             turns=attempt.turns,
             tool_calls=attempt.tool_calls,
             wall_clock_s=wall_clock_s,
+            grader_error=grader_error,
         )
         record.cost_usd = self._price_table.compute_cost(record)
         return record
