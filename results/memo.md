@@ -7,13 +7,11 @@
 | Label | Tier | Resolution rate | 95% CI | Cost/resolved bug | Underpowered |
 |---|---|---|---|---|---|
 | ★OpenShift sonnet | clean | 11.1% | (0.0%, 100.0%) | $14.09 | ⚠ YES |
+| OpenShift cascade | clean | 11.1% | (11.1%, 11.1%) | $15.33 | no |
 | ★OpenShift cascade | clean | 40.7% | (40.7%, 40.7%) | $16.94 | no |
+| OpenShift cascade | clean | 40.7% | (40.7%, 40.7%) | $17.28 | no |
 | OpenShift opus | clean | 33.3% | (0.0%, 100.0%) | $18.01 | ⚠ YES |
 | OpenShift haiku | clean | 0.0% | (0.0%, 0.0%) | $inf | ⚠ YES |
-| ★OpenShift sonnet | all | 11.1% | (0.0%, 100.0%) | $14.09 | ⚠ YES |
-| ★OpenShift cascade | all | 40.7% | (40.7%, 40.7%) | $16.94 | no |
-| OpenShift opus | all | 33.3% | (0.0%, 100.0%) | $18.01 | ⚠ YES |
-| OpenShift haiku | all | 0.0% | (0.0%, 0.0%) | $inf | ⚠ YES |
 
 ## Do the segments separate?
 
@@ -26,9 +24,6 @@ Only one segment evaluated.
 | OpenShift | clean | claude-haiku-4-5@20251001 | 3 |
 | OpenShift | clean | claude-opus-4-6 | 3 |
 | OpenShift | clean | claude-sonnet-4-6 | 3 |
-| OpenShift | all | claude-haiku-4-5@20251001 | 3 |
-| OpenShift | all | claude-opus-4-6 | 3 |
-| OpenShift | all | claude-sonnet-4-6 | 3 |
 
 ## Power sizing
 
@@ -39,9 +34,6 @@ One or more segments are underpowered. Point estimates from underpowered segment
 | OpenShift | clean | 3 | 260 | 257 | — | — |
 | OpenShift | clean | 3 | 260 | 257 | — | — |
 | OpenShift | clean | 3 | 260 | 257 | — | — |
-| OpenShift | all | 3 | 260 | 257 | — | — |
-| OpenShift | all | 3 | 260 | 257 | — | — |
-| OpenShift | all | 3 | 260 | 257 | — | — |
 
 *(Delta and power level used are set by `--delta` and `--power` in `analyze_runs.py`. Fill in if different from defaults 0.10 / 0.80.)*
 
