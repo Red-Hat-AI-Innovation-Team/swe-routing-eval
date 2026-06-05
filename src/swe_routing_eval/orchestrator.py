@@ -83,8 +83,8 @@ class Orchestrator:
         self,
         sweep_config: SweepConfig,
         n_instances: int,
-        avg_tokens_in: int = 8_000,
-        avg_tokens_out: int = 2_000,
+        avg_tokens_in: int = 450_000,
+        avg_tokens_out: int = 7_000,
     ) -> dict[Tier, float]:
         """Return projected total cost per tier without running any inference."""
         projection: dict[Tier, float] = {}
@@ -108,8 +108,8 @@ class Orchestrator:
         sweep_config: SweepConfig,
         instances: list[SWEbenchInstance],
         budget: BudgetConfig,
-        avg_tokens_in: int = 8_000,
-        avg_tokens_out: int = 2_000,
+        avg_tokens_in: int = 450_000,
+        avg_tokens_out: int = 7_000,
     ) -> None:
         """Print cost projection and check against the budget cap.
 
@@ -138,8 +138,8 @@ class Orchestrator:
         instances: list[SWEbenchInstance],
         workspace_factory: WorkspaceFactory,
         budget: BudgetConfig,
-        avg_tokens_in: int = 8_000,
-        avg_tokens_out: int = 2_000,
+        avg_tokens_in: int = 450_000,
+        avg_tokens_out: int = 7_000,
     ) -> None:
         """Run the full model×instance×attempt sweep.
 

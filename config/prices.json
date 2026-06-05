@@ -3,6 +3,10 @@
     "input_per_1k_tokens": 0.015,
     "output_per_1k_tokens": 0.075
   },
+  "claude-opus-4-6": {
+    "input_per_1k_tokens": 0.015,
+    "output_per_1k_tokens": 0.075
+  },
   "claude-sonnet-4-6": {
     "input_per_1k_tokens": 0.003,
     "output_per_1k_tokens": 0.015
