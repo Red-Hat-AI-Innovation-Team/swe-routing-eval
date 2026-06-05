@@ -109,15 +109,19 @@ def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
             )
 
         # Each attempt gets its own worktree at base_commit — lightweight and instant.
+        import shutil
         wt_name = f"{instance.instance_id}_attempt{attempt_idx}"
         wt_path = workspace_root / wt_name
         if wt_path.exists():
-            # Prune stale worktrees from a previous run first
-            subprocess.run(
+            # Try registered worktree removal first; fall back to plain rmtree
+            # (old full-clone directories are not registered worktrees)
+            r = subprocess.run(
                 ["git", "worktree", "remove", "--force", str(wt_path)],
                 cwd=str(cache_path),
                 capture_output=True,
             )
+            if r.returncode != 0 and wt_path.exists():
+                shutil.rmtree(wt_path)
         subprocess.run(
             ["git", "worktree", "add", "--detach", "--quiet",
              str(wt_path), instance.base_commit],
