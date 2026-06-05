@@ -65,28 +65,79 @@ def _load_price_table(path: Path) -> PriceTable:
 
 
 def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
+    """Clone each repo once into a shared cache; derive per-attempt workspaces via git worktree.
+
+    Cloning kubernetes or etcd once (~seconds) and then creating lightweight
+    worktrees per attempt is orders of magnitude faster than a full clone per attempt.
+    """
+    import threading
+
+    cache_root = workspace_root / "_cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    _clone_locks: dict[str, threading.Lock] = {}
+    _registry_lock = threading.Lock()
+
+    def _get_lock(repo: str) -> threading.Lock:
+        with _registry_lock:
+            if repo not in _clone_locks:
+                _clone_locks[repo] = threading.Lock()
+            return _clone_locks[repo]
 
     def factory(instance: object, attempt_idx: int) -> Path:
         from swe_routing_eval.ingest import SWEbenchInstance
 
         assert isinstance(instance, SWEbenchInstance)
-        ws = workspace_root / f"{instance.instance_id}_attempt{attempt_idx}"
-        ws.mkdir(parents=True, exist_ok=True)
+        repo = instance.repo
+        cache_name = repo.replace("/", "__")
+        cache_path = cache_root / cache_name
+
+        # Clone once per repo; concurrent attempts for the same repo wait on the lock.
+        with _get_lock(repo):
+            if not cache_path.exists():
+                print(f"Cloning {repo} (once) …", flush=True)
+                subprocess.run(
+                    ["git", "clone", "--quiet",
+                     f"https://github.com/{repo}.git", str(cache_path)],
+                    check=True,
+                )
+            # Ensure the required commit is present (in case of shallow clones)
+            subprocess.run(
+                ["git", "fetch", "--quiet", "origin", instance.base_commit],
+                cwd=str(cache_path),
+                capture_output=True,  # don't spam if already present
+            )
+
+        # Each attempt gets its own worktree at base_commit — lightweight and instant.
+        wt_name = f"{instance.instance_id}_attempt{attempt_idx}"
+        wt_path = workspace_root / wt_name
+        if wt_path.exists():
+            # Prune stale worktrees from a previous run first
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(wt_path)],
+                cwd=str(cache_path),
+                capture_output=True,
+            )
         subprocess.run(
-            ["git", "clone", "--quiet", f"https://github.com/{instance.repo}.git", str(ws)],
+            ["git", "worktree", "add", "--detach", "--quiet",
+             str(wt_path), instance.base_commit],
+            cwd=str(cache_path),
             check=True,
         )
-        subprocess.run(
-            ["git", "checkout", "--quiet", instance.base_commit],
-            cwd=str(ws),
-            check=True,
-        )
-        return ws
+        return wt_path
 
     return factory
 
 
 def main(argv: list[str] | None = None) -> int:
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        datefmt="%H:%M:%S",
+        stream=sys.stderr,
+    )
+
     parser = argparse.ArgumentParser(
         description="Run or dry-run the eval sweep.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
