@@ -260,8 +260,12 @@ class Orchestrator:
             resolved=False if grade is None else grade.resolved,
             compiled=False if grade is None else grade.compiled,
             rejected_test_edit=False if grade is None else grade.rejected_test_edit,
-            f2p_results=[] if grade is None else [{"name": r.name, "passed": r.passed} for r in grade.f2p_results],
-            p2p_results=[] if grade is None else [{"name": r.name, "passed": r.passed} for r in grade.p2p_results],
+            f2p_results=[] if grade is None else [
+                {"name": r.name, "passed": r.passed} for r in grade.f2p_results
+            ],
+            p2p_results=[] if grade is None else [
+                {"name": r.name, "passed": r.passed} for r in grade.p2p_results
+            ],
             tokens_in=attempt.tokens_in,
             tokens_out=attempt.tokens_out,
             turns=attempt.turns,

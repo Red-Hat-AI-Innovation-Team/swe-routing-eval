@@ -9,7 +9,7 @@ import pytest
 
 from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
-from swe_routing_eval.grading import GradeResult, GraderError
+from swe_routing_eval.grading import GraderError, GradeResult
 from swe_routing_eval.ingest import SWEbenchInstance
 from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
 from swe_routing_eval.scaffold import AttemptResult, Scaffold
