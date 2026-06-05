@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             from swe_routing_eval.frontier import plot_frontier
             plot_path = args.output / "frontier.png"
-            plot_frontier(build_frontier(frontier_points), plot_path)
+            plot_frontier(frontier_points, plot_path)
             print(f"Wrote {plot_path}")
         except ImportError:
             print("matplotlib not available — skipping frontier.png (use --no-plot to suppress)")

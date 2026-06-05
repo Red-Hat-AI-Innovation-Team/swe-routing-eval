@@ -218,16 +218,20 @@ def plot_frontier(
             "Install with: pip install -e '.[analysis]'"
         ) from exc
 
+    # Only plot single-model points — cascades are analytical artifacts, not
+    # concrete model choices that leadership can permit for a team.
+    model_points = [p for p in points if not p.is_cascade]
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    segments = sorted({p.segment for p in points})
+    segments = sorted({p.segment for p in model_points})
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     seg_color = {seg: colors[i % len(colors)] for i, seg in enumerate(segments)}
 
-    pareto = build_frontier(points)
+    pareto = build_frontier(model_points)
 
-    for p in points:
+    for p in model_points:
         color = seg_color[p.segment]
-        marker = "D" if p.is_cascade else ("o" if p in pareto else "x")
+        marker = "o" if p in pareto else "x"
         alpha = 1.0 if p in pareto else 0.4
         ax.scatter(p.cost_per_resolved, p.resolution_rate,
                    color=color, marker=marker, s=80, alpha=alpha, zorder=3)
@@ -235,7 +239,7 @@ def plot_frontier(
                     yerr=[[p.resolution_rate - p.ci_lower],
                           [p.ci_upper - p.resolution_rate]],
                     fmt="none", color=color, alpha=alpha * 0.6, capsize=4)
-        if p in pareto or p.is_cascade:
+        if p in pareto:
             ax.annotate(
                 p.label,
                 (p.cost_per_resolved, p.resolution_rate),
@@ -265,7 +269,6 @@ def plot_frontier(
         for s in segments
     ]
     handles += [
-        Line2D([0], [0], marker="D", color="grey", markersize=8, label="cascade"),
         Line2D([0], [0], marker="x", color="grey", markersize=8,
                alpha=0.4, label="off-frontier"),
     ]
