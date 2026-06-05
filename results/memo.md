@@ -7,9 +7,6 @@
 | Label | Tier | Resolution rate | 95% CI | Cost/resolved bug | Underpowered |
 |---|---|---|---|---|---|
 | ★OpenShift sonnet | clean | 11.1% | (0.0%, 100.0%) | $14.09 | ⚠ YES |
-| OpenShift cascade | clean | 11.1% | (11.1%, 11.1%) | $15.33 | no |
-| ★OpenShift cascade | clean | 40.7% | (40.7%, 40.7%) | $16.94 | no |
-| OpenShift cascade | clean | 40.7% | (40.7%, 40.7%) | $17.28 | no |
 | OpenShift opus | clean | 33.3% | (0.0%, 100.0%) | $18.01 | ⚠ YES |
 | OpenShift haiku | clean | 0.0% | (0.0%, 0.0%) | $inf | ⚠ YES |
 
