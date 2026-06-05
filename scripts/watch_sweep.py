@@ -55,7 +55,9 @@ def _render(records: list[RunRecord], total: int, elapsed_s: float) -> str:
         by_tier[r.model_id].append(r)
 
     if by_tier:
-        lines.append(f"{'model':<40}  {'done':>4}  {'resolved':>8}  {'cost':>8}  {'tok_in':>8}  {'tok_out':>8}")
+        lines.append(
+            f"{'model':<40}  {'done':>4}  {'resolved':>8}  {'cost':>8}  {'tok_in':>8}  {'tok_out':>8}"
+        )
         lines.append("-" * 82)
         for model_id in sorted(by_tier):
             rs = by_tier[model_id]
@@ -64,7 +66,8 @@ def _render(records: list[RunRecord], total: int, elapsed_s: float) -> str:
             tok_in = sum(r.tokens_in for r in rs)
             tok_out = sum(r.tokens_out for r in rs)
             lines.append(
-                f"{model_id:<40}  {len(rs):>4}  {n_res:>8}  ${cost:>7.4f}  {tok_in:>8,}  {tok_out:>8,}"
+                f"{model_id:<40}  {len(rs):>4}  {n_res:>8}  ${cost:>7.4f}"
+                f"  {tok_in:>8,}  {tok_out:>8,}"
             )
         lines.append("")
 
@@ -86,7 +89,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Watch eval_sweep progress")
     parser.add_argument("--db", default="runs.db", help="Path to the SQLite store (default: runs.db)")
     parser.add_argument("--total", type=int, default=36, help="Expected total attempts (default: 36)")
-    parser.add_argument("--interval", type=float, default=10.0, help="Refresh interval in seconds (default: 10)")
+    parser.add_argument(
+        "--interval", type=float, default=10.0, help="Refresh interval in seconds (default: 10)"
+    )
     args = parser.parse_args()
 
     db_path = Path(args.db)
