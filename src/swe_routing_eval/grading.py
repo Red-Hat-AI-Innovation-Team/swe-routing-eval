@@ -156,6 +156,74 @@ class SubprocessGrader:
 
 
 # ---------------------------------------------------------------------------
+# SwebenchifyGrader — importable grade() from the producer (issue #2)
+# ---------------------------------------------------------------------------
+
+
+class SwebenchifyGrader:
+    """Calls swebenchify.grader.grade() as a library — no subprocess required.
+
+    This is the production grader now that SWE-benchify exposes grade() as
+    an importable API (issue #2). It applies candidate_patch + canonical
+    test_patch via Docker, runs go test -json, and returns a GradeResult.
+
+    Args:
+        docker_image: Override the Docker image (default: instance.image_name).
+        timeout: Seconds to allow the test run (default: 300).
+    """
+
+    def __init__(
+        self,
+        docker_image: str | None = None,
+        timeout: int = 300,
+    ) -> None:
+        self._docker_image = docker_image
+        self._timeout = timeout
+
+    def grade(
+        self,
+        instance: SWEbenchInstance,
+        candidate_patch: str,
+    ) -> GradeResult:
+        try:
+            from swebenchify.grader import grade as _sw_grade
+        except ImportError:
+            raise GraderError(
+                "swebenchify is not installed. Install it from the SWE-benchify repo "
+                "or use SubprocessGrader with the swe-grade binary instead."
+            ) from None
+
+        inst_dict: dict[str, object] = {
+            "repo": instance.repo,
+            "base_commit": instance.base_commit,
+            "test_patch": instance.test_patch,
+            "FAIL_TO_PASS": instance.fail_to_pass,
+            "PASS_TO_PASS": instance.pass_to_pass,
+        }
+        image = self._docker_image or instance.image_name
+
+        try:
+            result = _sw_grade(
+                inst_dict,
+                candidate_patch,
+                docker_image=image,
+                timeout=self._timeout,
+            )
+        except RuntimeError as exc:
+            raise GraderError(str(exc)) from exc
+
+        f2p = [TestResult(name=r.test_id, passed=r.status == "passed") for r in result.f2p]
+        p2p = [TestResult(name=r.test_id, passed=r.status == "passed") for r in result.p2p]
+        return GradeResult(
+            resolved=result.resolved,
+            compiled=result.compiled,
+            f2p_results=f2p,
+            p2p_results=p2p,
+            telemetry=result.telemetry,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Flake-quarantine application (issue #6)
 # ---------------------------------------------------------------------------
 

@@ -1,8 +1,8 @@
 """JSONL ingestion and schema validation for SWE-benchify instances (issue #3).
 
-The schema is the cross-repo contract with SWE-benchify. Any record with a
-missing required field or an unexpected field raises SchemaError immediately —
-this repo fails loud on drift rather than silently accepting a changed schema.
+The schema is the cross-repo contract with SWE-benchify. Any record missing a
+required field raises SchemaError immediately. Extra/unknown fields are silently
+ignored — SWE-benchify may add new columns over time and that is not drift.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class SchemaError(Exception):
@@ -19,7 +19,10 @@ class SchemaError(Exception):
 
 
 class SWEbenchInstance(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # extra="ignore": SWE-benchify emits additional fields (FAIL_TO_PASS,
+    # hints_text, flake_count, …) that are not part of our eval schema.
+    # populate_by_name=True: accept both our field name and any alias.
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     # Base SWE-bench fields
     instance_id: str
@@ -41,19 +44,43 @@ class SWEbenchInstance(BaseModel):
     cross_file: bool
     env_spec_hash: str
     image_name: str
-    compiled: bool
+    # compiled is a validation-phase field; not all emitted instances carry it.
+    compiled: bool = True
 
     # Validation-evidence columns
     n_runs: int
     quarantined_tests: list[str]
-    decontam_overlap: bool
+    # SWE-benchify emits this as "decontamination_overlap".
+    decontam_overlap: bool = Field(alias="decontamination_overlap", default=False)
+
+    # F2P / P2P test lists — may be JSON-encoded strings or plain lists.
+    # Used by SwebenchifyGrader to know which tests to check.
+    fail_to_pass: list[str] = Field(alias="FAIL_TO_PASS", default_factory=list)
+    pass_to_pass: list[str] = Field(alias="PASS_TO_PASS", default_factory=list)
+
+    @field_validator("fail_to_pass", "pass_to_pass", mode="before")
+    @classmethod
+    def _decode_test_list(cls, v: Any) -> list[str]:
+        """Accept both JSON-encoded strings and plain lists."""
+        if isinstance(v, str):
+            try:
+                decoded = json.loads(v)
+                if isinstance(decoded, list):
+                    return [str(x) for x in decoded]
+            except json.JSONDecodeError:
+                pass
+            return []
+        if isinstance(v, list):
+            return [str(x) for x in v]
+        return []
 
 
 def load(path: str | Path) -> list[SWEbenchInstance]:
     """Load and validate a SWE-benchify JSONL file.
 
-    Raises SchemaError on the first record with a missing required field or an
-    unexpected (drifted) field. Empty lines are skipped.
+    Raises SchemaError on the first record missing a required field.
+    Extra fields present in the JSONL are silently ignored.
+    Empty lines are skipped.
     """
     instances: list[SWEbenchInstance] = []
     with Path(path).open() as f:

@@ -42,7 +42,7 @@ from pathlib import Path
 
 from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
-from swe_routing_eval.grading import SubprocessGrader
+from swe_routing_eval.grading import SubprocessGrader, SwebenchifyGrader
 from swe_routing_eval.ingest import load
 from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
 from swe_routing_eval.scaffold import Scaffold
@@ -143,9 +143,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--grade-binary",
-        default="swe-grade",
+        default=None,
         metavar="PATH",
-        help="Path to SWE-benchify grade binary (default: swe-grade)",
+        help="Path to swe-grade binary (default: use importable swebenchify.grader.grade)",
     )
 
     args = parser.parse_args(argv)
@@ -179,7 +179,10 @@ def main(argv: list[str] | None = None) -> int:
 
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
-    grader = SubprocessGrader(binary=args.grade_binary)
+    if args.grade_binary:
+        grader = SubprocessGrader(binary=args.grade_binary)
+    else:
+        grader = SwebenchifyGrader()
 
     orchestrator = Orchestrator(
         store=store,
