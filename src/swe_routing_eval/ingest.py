@@ -75,6 +75,19 @@ class SWEbenchInstance(BaseModel):
         return []
 
 
+def filter_by_year(
+    instances: list[SWEbenchInstance],
+    years: list[int],
+) -> list[SWEbenchInstance]:
+    """Return only instances whose fix_merge_date falls in one of the given years.
+
+    fix_merge_date is an ISO 8601 string (e.g. "2024-12-12T14:02:26Z").
+    The year is extracted from the first four characters.
+    """
+    year_set = {str(y) for y in years}
+    return [inst for inst in instances if inst.fix_merge_date[:4] in year_set]
+
+
 def load(path: str | Path) -> list[SWEbenchInstance]:
     """Load and validate a SWE-benchify JSONL file.
 

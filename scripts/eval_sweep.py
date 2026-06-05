@@ -43,7 +43,7 @@ from pathlib import Path
 from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
 from swe_routing_eval.grading import SubprocessGrader, SwebenchifyGrader
-from swe_routing_eval.ingest import load
+from swe_routing_eval.ingest import filter_by_year, load
 from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
 from swe_routing_eval.scaffold import Scaffold
 from swe_routing_eval.store import FileStore
@@ -202,6 +202,15 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="Path to swe-grade binary (default: use importable swebenchify.grader.grade)",
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        nargs="+",
+        default=None,
+        metavar="YEAR",
+        help="Only include instances whose fix_merge_date falls in these year(s) "
+             "(e.g. --year 2024 or --year 2024 2025)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -215,6 +224,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Loading instances from {args.instances_jsonl} …")
     instances = load(args.instances_jsonl)
     print(f"Loaded {len(instances)} instance(s).")
+    if args.year:
+        instances = filter_by_year(instances, args.year)
+        print(f"After --year {args.year} filter: {len(instances)} instance(s).")
 
     price_table = _load_price_table(args.price_table)
 

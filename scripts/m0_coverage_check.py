@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 from swe_routing_eval.grading import SubprocessGrader, safe_grade
-from swe_routing_eval.ingest import load
+from swe_routing_eval.ingest import filter_by_year, load
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,11 +37,24 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="Path to the SWE-benchify grade binary (default: swe-grade)",
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        nargs="+",
+        default=None,
+        metavar="YEAR",
+        help="Only include instances whose fix_merge_date falls in these year(s) "
+             "(e.g. --year 2024 or --year 2024 2025)",
+    )
     args = parser.parse_args(argv)
 
     print(f"Loading instances from {args.instances_jsonl} …")
     instances = load(args.instances_jsonl)
-    print(f"Loaded {len(instances)} instance(s). Grading gold patches …\n")
+    print(f"Loaded {len(instances)} instance(s).")
+    if args.year:
+        instances = filter_by_year(instances, args.year)
+        print(f"After --year {args.year} filter: {len(instances)} instance(s).")
+    print("Grading gold patches …\n")
 
     grader = SubprocessGrader(binary=args.grade_binary)
     failures: list[str] = []

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from swe_routing_eval.ingest import SchemaError, load
+from swe_routing_eval.ingest import SchemaError, filter_by_year, load
 
 # Canonical record using our field names (compatible with both old and new schema)
 VALID_RECORD: dict[str, object] = {
@@ -119,3 +119,39 @@ def test_empty_lines_skipped(tmp_path: Path) -> None:
     p.write_text("\n" + json.dumps(VALID_RECORD) + "\n\n")
     instances = load(p)
     assert len(instances) == 1
+
+
+# ---------------------------------------------------------------------------
+# filter_by_year
+# ---------------------------------------------------------------------------
+
+def _make_instance(fix_merge_date: str) -> object:
+    from swe_routing_eval.ingest import SWEbenchInstance
+    return SWEbenchInstance.model_validate({**VALID_RECORD, "fix_merge_date": fix_merge_date})
+
+
+def test_filter_by_year_keeps_matching_year() -> None:
+    instances = [_make_instance("2024-03-01T00:00:00Z"), _make_instance("2025-06-15T10:00:00Z")]
+    result = filter_by_year(instances, [2024])
+    assert len(result) == 1
+    assert result[0].fix_merge_date.startswith("2024")
+
+
+def test_filter_by_year_multiple_years() -> None:
+    instances = [
+        _make_instance("2023-01-01T00:00:00Z"),
+        _make_instance("2024-06-01T00:00:00Z"),
+        _make_instance("2025-12-31T00:00:00Z"),
+    ]
+    result = filter_by_year(instances, [2024, 2025])
+    assert len(result) == 2
+    assert all(inst.fix_merge_date[:4] in {"2024", "2025"} for inst in result)
+
+
+def test_filter_by_year_empty_result() -> None:
+    instances = [_make_instance("2024-01-01T00:00:00Z")]
+    assert filter_by_year(instances, [2023]) == []
+
+
+def test_filter_by_year_empty_input() -> None:
+    assert filter_by_year([], [2024]) == []
