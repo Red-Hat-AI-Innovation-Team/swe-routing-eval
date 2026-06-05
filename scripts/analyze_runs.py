@@ -85,10 +85,13 @@ def _build_frontier_points(
             continue
         groups[(inst.product, r.model_id)].append(r)
 
-    # Clean instance IDs per segment
+    # Clean instance IDs per segment and contamination presence flag.
     clean_ids_by_seg: dict[str, set[str]] = defaultdict(set)
+    seg_has_contaminated: dict[str, bool] = defaultdict(bool)
     for inst in instances:
-        if not inst.decontam_overlap:
+        if inst.decontam_overlap:
+            seg_has_contaminated[inst.product] = True
+        else:
             clean_ids_by_seg[inst.product].add(inst.instance_id)
 
     # Estimate p_discordant per segment using the cheapest and most expensive cascade tiers.
@@ -102,9 +105,19 @@ def _build_frontier_points(
 
     points: list[FrontierPoint] = []
 
+    def _contam_tiers(seg: str) -> list[tuple[str, set[str] | None]]:
+        """Return the contamination tiers to compute for a segment.
+
+        Omits the redundant "all" tier when no instance in the segment is
+        contaminated (decontam_overlap=True), since clean == all in that case.
+        """
+        tiers: list[tuple[str, set[str] | None]] = [("clean", clean_ids_by_seg[seg])]
+        if seg_has_contaminated[seg]:
+            tiers.append(("all", None))
+        return tiers
+
     for (seg, model_id), recs in groups.items():
-        # Compute stats for both contamination tiers
-        for contam_tier, filt in [("clean", clean_ids_by_seg[seg]), ("all", None)]:
+        for contam_tier, filt in _contam_tiers(seg):
             try:
                 stats = segment_stats(
                     seg, model_id, recs, seed=42,
@@ -152,7 +165,7 @@ def _build_frontier_points(
                 recs_by_mid = [groups.get((seg, mid), []) for mid in mids]
                 if any(not r for r in recs_by_mid):
                     continue
-                for contam_tier, filt in [("clean", clean_ids_by_seg[seg]), ("all", None)]:
+                for contam_tier, filt in _contam_tiers(seg):
                     filtered = [
                         [r for r in recs if filt is None or r.instance_id in filt]
                         for recs in recs_by_mid
