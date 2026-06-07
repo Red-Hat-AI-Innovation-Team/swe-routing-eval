@@ -140,6 +140,7 @@ class Orchestrator:
         budget: BudgetConfig,
         avg_tokens_in: int = 450_000,
         avg_tokens_out: int = 7_000,
+        workspace_cleanup: Callable[[Path], None] | None = None,
     ) -> None:
         """Run the full model×instance×attempt sweep.
 
@@ -169,7 +170,7 @@ class Orchestrator:
         warn_threshold = budget.max_spend_usd * budget.warn_at_fraction
 
         with ThreadPoolExecutor(max_workers=sweep_config.max_workers) as pool:
-            future_to_key: dict[Future[RunRecord], tuple[Tier, str, int]] = {}
+            future_to_key: dict[Future[RunRecord], tuple[Tier, str, int, Path]] = {}
             for tier, inst, idx in pending:
                 seed = sweep_config.base_seed + idx
                 model_id = self._vertex_config.model_id(tier)
@@ -182,11 +183,11 @@ class Orchestrator:
                     seed=seed,
                     workspace_dir=workspace_dir,
                 )
-                future_to_key[future] = (tier, inst.instance_id, idx)
+                future_to_key[future] = (tier, inst.instance_id, idx, workspace_dir)
 
             completed = skipped
             for future in as_completed(future_to_key):
-                tier, instance_id, idx = future_to_key[future]
+                tier, instance_id, idx, workspace_dir = future_to_key[future]
                 completed += 1
                 try:
                     record = future.result()
@@ -209,6 +210,15 @@ class Orchestrator:
                     logger.exception(
                         "Attempt (%s, %s, %d) failed", tier, instance_id, idx
                     )
+                finally:
+                    if workspace_cleanup is not None:
+                        try:
+                            workspace_cleanup(workspace_dir)
+                        except Exception:
+                            logger.warning(
+                                "Failed to clean up workspace %s", workspace_dir,
+                                exc_info=True,
+                            )
 
     def _is_done(self, model_id: str, instance_id: str, attempt_idx: int) -> bool:
         try:

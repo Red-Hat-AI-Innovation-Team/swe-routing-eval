@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -131,6 +132,10 @@ def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
         return wt_path
 
     return factory
+
+
+def _workspace_cleanup(workspace_dir: Path) -> None:
+    shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -276,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
             instances,
             _workspace_factory(workspace_root),
             budget,
+            workspace_cleanup=_workspace_cleanup,
         )
     except BudgetExceeded as exc:
         print(f"Aborted: {exc}", file=sys.stderr)

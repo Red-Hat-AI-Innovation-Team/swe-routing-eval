@@ -16,6 +16,7 @@ assert _spec and _spec.loader
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 main = _mod.main
+_workspace_cleanup = _mod._workspace_cleanup
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -193,3 +194,23 @@ def test_missing_vertex_env_returns_exit_code_2(
         "--dry-run",
     ])
     assert rc == 2
+
+
+# ---------------------------------------------------------------------------
+# _workspace_cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_cleanup_removes_directory(tmp_path: Path) -> None:
+    workspace_dir = tmp_path / "test-worktree"
+    workspace_dir.mkdir()
+    (workspace_dir / "file.txt").write_text("hello")
+
+    _workspace_cleanup(workspace_dir)
+
+    assert not workspace_dir.exists()
+
+
+def test_workspace_cleanup_ignores_missing_directory(tmp_path: Path) -> None:
+    workspace_dir = tmp_path / "does-not-exist"
+    _workspace_cleanup(workspace_dir)  # should not raise

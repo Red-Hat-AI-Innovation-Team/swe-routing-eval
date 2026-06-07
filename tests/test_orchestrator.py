@@ -269,3 +269,78 @@ def test_run_raises_before_inference_if_budget_exceeded(tmp_path: Path) -> None:
             BudgetConfig(max_spend_usd=0.01),
         )
     scaffold.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Workspace cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_cleanup_called_after_each_attempt(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+    cleanup = MagicMock()
+
+    _resolved = GradeResult(resolved=True, compiled=True)
+    with patch("swe_routing_eval.grading.safe_grade", return_value=_resolved):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=2, max_workers=1)
+        orc.run(
+            cfg, [_instance()], _workspace_factory,
+            BudgetConfig(max_spend_usd=100.0),
+            workspace_cleanup=cleanup,
+        )
+
+    assert cleanup.call_count == 2
+
+
+def test_workspace_cleanup_called_on_failed_attempt(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+    scaffold = _mock_scaffold()
+    scaffold.run.side_effect = RuntimeError("API error")
+    cleanup = MagicMock()
+
+    orc = _make_orchestrator(store, scaffold=scaffold)
+    cfg = SweepConfig(model_tiers=["opus"], k_attempts=1, max_workers=1)
+    orc.run(
+        cfg, [_instance()], _workspace_factory,
+        BudgetConfig(max_spend_usd=100.0),
+        workspace_cleanup=cleanup,
+    )
+
+    cleanup.assert_called_once()
+
+
+def test_workspace_cleanup_error_does_not_mask_result(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+    cleanup = MagicMock(side_effect=OSError("permission denied"))
+
+    _resolved = GradeResult(resolved=True, compiled=True)
+    with patch("swe_routing_eval.grading.safe_grade", return_value=_resolved):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=1, max_workers=1)
+        orc.run(
+            cfg, [_instance()], _workspace_factory,
+            BudgetConfig(max_spend_usd=100.0),
+            workspace_cleanup=cleanup,
+        )
+
+    cleanup.assert_called_once()
+    records = store.list_all()
+    assert len(records) == 1
+    assert records[0].resolved is True
+
+
+def test_no_cleanup_when_callback_is_none(tmp_path: Path) -> None:
+    """Omitting workspace_cleanup does not break the sweep."""
+    store = FileStore(tmp_path / "runs.db")
+
+    _resolved = GradeResult(resolved=True, compiled=True)
+    with patch("swe_routing_eval.grading.safe_grade", return_value=_resolved):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=1, max_workers=1)
+        orc.run(
+            cfg, [_instance()], _workspace_factory,
+            BudgetConfig(max_spend_usd=100.0),
+        )
+
+    assert len(store.list_all()) == 1
