@@ -170,24 +170,24 @@ class Orchestrator:
         warn_threshold = budget.max_spend_usd * budget.warn_at_fraction
 
         with ThreadPoolExecutor(max_workers=sweep_config.max_workers) as pool:
-            future_to_key: dict[Future[RunRecord], tuple[Tier, str, int, Path]] = {}
+            future_to_key: dict[Future[RunRecord], tuple[Tier, str, int]] = {}
             for tier, inst, idx in pending:
                 seed = sweep_config.base_seed + idx
                 model_id = self._vertex_config.model_id(tier)
-                workspace_dir = workspace_factory(inst, idx)
                 future = pool.submit(
                     self._run_one,
                     model_id=model_id,
                     instance=inst,
                     attempt_idx=idx,
                     seed=seed,
-                    workspace_dir=workspace_dir,
+                    workspace_factory=workspace_factory,
+                    workspace_cleanup=workspace_cleanup,
                 )
-                future_to_key[future] = (tier, inst.instance_id, idx, workspace_dir)
+                future_to_key[future] = (tier, inst.instance_id, idx)
 
             completed = skipped
             for future in as_completed(future_to_key):
-                tier, instance_id, idx, workspace_dir = future_to_key[future]
+                tier, instance_id, idx = future_to_key[future]
                 completed += 1
                 try:
                     record = future.result()
@@ -210,15 +210,6 @@ class Orchestrator:
                     logger.exception(
                         "Attempt (%s, %s, %d) failed", tier, instance_id, idx
                     )
-                finally:
-                    if workspace_cleanup is not None:
-                        try:
-                            workspace_cleanup(workspace_dir)
-                        except Exception:
-                            logger.warning(
-                                "Failed to clean up workspace %s", workspace_dir,
-                                exc_info=True,
-                            )
 
     def _is_done(self, model_id: str, instance_id: str, attempt_idx: int) -> bool:
         try:
@@ -233,55 +224,67 @@ class Orchestrator:
         instance: SWEbenchInstance,
         attempt_idx: int,
         seed: int,
-        workspace_dir: Path,
+        workspace_factory: WorkspaceFactory,
+        workspace_cleanup: Callable[[Path], None] | None = None,
     ) -> RunRecord:
-        t0 = time.monotonic()
-        attempt: AttemptResult = self._scaffold.run(
-            instance=instance,
-            workspace_dir=workspace_dir,
-            model_id=model_id,
-            seed=seed,
-        )
-        wall_clock_s = time.monotonic() - t0
-
-        assert attempt.model_id == model_id, (
-            f"Scaffold returned model_id={attempt.model_id!r} "
-            f"but orchestrator expected {model_id!r}"
-        )
-
+        workspace_dir = workspace_factory(instance, attempt_idx)
         try:
-            grade = safe_grade(instance, attempt.candidate_patch, self._grader)
-            grader_error = ""
-        except GraderError as exc:
-            logger.error(
-                "GraderError for (%s, %s, %d): %s",
-                model_id, instance.instance_id, attempt_idx, exc,
+            t0 = time.monotonic()
+            attempt: AttemptResult = self._scaffold.run(
+                instance=instance,
+                workspace_dir=workspace_dir,
+                model_id=model_id,
+                seed=seed,
             )
-            grade = None
-            grader_error = str(exc)
+            wall_clock_s = time.monotonic() - t0
 
-        record = RunRecord(
-            model_id=attempt.model_id,
-            instance_id=instance.instance_id,
-            attempt_idx=attempt_idx,
-            seed=seed,
-            scaffold_version=attempt.scaffold_version,
-            candidate_patch=attempt.candidate_patch,
-            resolved=False if grade is None else grade.resolved,
-            compiled=False if grade is None else grade.compiled,
-            rejected_test_edit=False if grade is None else grade.rejected_test_edit,
-            f2p_results=[] if grade is None else [
-                {"name": r.name, "passed": r.passed} for r in grade.f2p_results
-            ],
-            p2p_results=[] if grade is None else [
-                {"name": r.name, "passed": r.passed} for r in grade.p2p_results
-            ],
-            tokens_in=attempt.tokens_in,
-            tokens_out=attempt.tokens_out,
-            turns=attempt.turns,
-            tool_calls=attempt.tool_calls,
-            wall_clock_s=wall_clock_s,
-            grader_error=grader_error,
-        )
-        record.cost_usd = self._price_table.compute_cost(record)
-        return record
+            assert attempt.model_id == model_id, (
+                f"Scaffold returned model_id={attempt.model_id!r} "
+                f"but orchestrator expected {model_id!r}"
+            )
+
+            try:
+                grade = safe_grade(instance, attempt.candidate_patch, self._grader)
+                grader_error = ""
+            except GraderError as exc:
+                logger.error(
+                    "GraderError for (%s, %s, %d): %s",
+                    model_id, instance.instance_id, attempt_idx, exc,
+                )
+                grade = None
+                grader_error = str(exc)
+
+            record = RunRecord(
+                model_id=attempt.model_id,
+                instance_id=instance.instance_id,
+                attempt_idx=attempt_idx,
+                seed=seed,
+                scaffold_version=attempt.scaffold_version,
+                candidate_patch=attempt.candidate_patch,
+                resolved=False if grade is None else grade.resolved,
+                compiled=False if grade is None else grade.compiled,
+                rejected_test_edit=False if grade is None else grade.rejected_test_edit,
+                f2p_results=[] if grade is None else [
+                    {"name": r.name, "passed": r.passed} for r in grade.f2p_results
+                ],
+                p2p_results=[] if grade is None else [
+                    {"name": r.name, "passed": r.passed} for r in grade.p2p_results
+                ],
+                tokens_in=attempt.tokens_in,
+                tokens_out=attempt.tokens_out,
+                turns=attempt.turns,
+                tool_calls=attempt.tool_calls,
+                wall_clock_s=wall_clock_s,
+                grader_error=grader_error,
+            )
+            record.cost_usd = self._price_table.compute_cost(record)
+            return record
+        finally:
+            if workspace_cleanup is not None:
+                try:
+                    workspace_cleanup(workspace_dir)
+                except Exception:
+                    logger.warning(
+                        "Failed to clean up workspace %s", workspace_dir,
+                        exc_info=True,
+                    )
