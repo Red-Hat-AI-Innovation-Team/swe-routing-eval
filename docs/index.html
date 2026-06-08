@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Hat SWE-bench Dashboard</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-yellow: #d29922;
+  --accent-purple: #bc8cff;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* Header */
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.header h1 { font-size: 24px; font-weight: 600; }
+.header .timestamp { font-size: 13px; color: var(--text-secondary); }
+
+/* Filters */
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.filter-bar label { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.filter-group { position: relative; display: inline-block; }
+.filter-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filter-btn:hover { border-color: var(--text-secondary); }
+.filter-btn .arrow { font-size: 10px; color: var(--text-secondary); }
+.filter-btn .count {
+  background: var(--accent-blue);
+  color: #fff;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.filter-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 100;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.filter-dropdown.open { display: block; }
+.filter-dropdown label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+.filter-dropdown label:hover { background: var(--bg-tertiary); }
+.filter-dropdown input[type="checkbox"] { accent-color: var(--accent-blue); }
+.filter-reset {
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.filter-reset:hover { text-decoration: underline; }
+.filter-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+/* Summary cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.summary-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+.summary-card .model-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.summary-card .primary-metric {
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.summary-card .primary-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: -12px;
+  margin-bottom: 16px;
+}
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.metric-item .metric-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+.metric-item .metric-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Tooltips */
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.info-tip:hover { background: var(--border); color: var(--text-primary); }
+.info-tip .tip-text {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: normal;
+  width: 220px;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 10;
+}
+.info-tip:hover .tip-text { display: block; }
+
+/* Chart */
+.chart-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.chart-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+#pareto-chart { width: 100%; height: 400px; }
+
+/* Table */
+.table-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.table-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.table-wrap { overflow-x: auto; }
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.results-table th {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  position: sticky;
+  top: 0;
+}
+.results-table th:hover { color: var(--text-primary); }
+.results-table th .sort-arrow { margin-left: 4px; font-size: 10px; }
+.results-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.results-table tbody tr:hover { background: rgba(88,166,255,0.04); }
+.results-table a { color: var(--accent-blue); text-decoration: none; }
+.results-table a:hover { text-decoration: underline; }
+.cell-model {
+  cursor: pointer;
+  text-align: center;
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 12px;
+}
+.cell-model:hover { background: rgba(88,166,255,0.1) !important; }
+.cell-resolved { background: rgba(63,185,80,0.08); }
+.cell-partial { background: rgba(210,153,34,0.08); }
+.cell-failed { background: rgba(248,81,73,0.05); }
+.cell-none { color: var(--text-secondary); text-align: center; }
+.tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Detail panel */
+.detail-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.detail-overlay.open { opacity: 1; pointer-events: auto; }
+.detail-panel {
+  position: fixed;
+  top: 0; right: 0;
+  width: min(700px, 90vw);
+  height: 100%;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  z-index: 1001;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+.detail-panel.open { transform: translateX(0); }
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 1;
+}
+.detail-header h3 { font-size: 15px; font-weight: 600; }
+.detail-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.detail-close:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.detail-body { padding: 20px; }
+.detail-section { margin-bottom: 24px; }
+.detail-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 10px;
+}
+
+/* Attempt tabs */
+.attempt-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.attempt-tab {
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.attempt-tab:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+.attempt-tab.active {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
+.attempt-tab .status-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.status-dot.pass { background: var(--accent-green); }
+.status-dot.fail { background: var(--accent-red); }
+
+/* Attempt stats grid */
+.attempt-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.attempt-stat {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.attempt-stat .stat-value { font-size: 16px; font-weight: 600; }
+.attempt-stat .stat-label { font-size: 11px; color: var(--text-secondary); }
+
+/* Test results */
+.test-list { list-style: none; }
+.test-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+}
+.test-pass { color: var(--accent-green); }
+.test-fail { color: var(--accent-red); }
+.test-icon { width: 16px; text-align: center; font-weight: bold; }
+
+/* Diff */
+.diff-container {
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.diff-line {
+  padding: 0 12px;
+  white-space: pre;
+  min-height: 20px;
+}
+.diff-add { background: rgba(63,185,80,0.15); color: #aff5b4; }
+.diff-del { background: rgba(248,81,73,0.15); color: #ffa198; }
+.diff-hunk { background: rgba(56,139,253,0.1); color: var(--accent-blue); font-style: italic; }
+.diff-file-header {
+  font-weight: 600;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.diff-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-family: inherit;
+}
+
+/* Head-to-head */
+.h2h-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.h2h-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.h2h-empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-style: italic;
+}
+.h2h-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.h2h-stat {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.h2h-stat .stat-value { font-size: 22px; font-weight: 700; }
+.h2h-stat .stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+.h2h-stat .stat-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.h2h-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.h2h-bar-label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 80px;
+  text-align: right;
+}
+.h2h-bar-track {
+  flex: 1;
+  height: 24px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.h2h-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  min-width: fit-content;
+}
+.h2h-bar-value {
+  font-size: 13px;
+  min-width: 60px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+.h2h-power {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+.h2h-power .power-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 8px;
+}
+.h2h-power .power-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 3px 0;
+}
+.h2h-power .power-row .label { color: var(--text-secondary); }
+.h2h-powered { color: var(--accent-green); }
+.h2h-underpowered { color: var(--accent-yellow); }
+.h2h-delta {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 6px;
+  opacity: 0.85;
+}
+.h2h-delta.better { color: var(--accent-green); }
+.h2h-delta.worse { color: var(--accent-red); }
+.h2h-delta.neutral { color: var(--text-secondary); }
+
+/* Loading / error */
+.loading {
+  text-align: center;
+  padding: 64px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+.error-banner {
+  background: rgba(248,81,73,0.1);
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .summary-cards { grid-template-columns: 1fr; }
+  .detail-panel { width: 100vw; }
+  .header { flex-direction: column; gap: 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Red Hat SWE-bench Dashboard</h1>
+    <span class="timestamp" id="timestamp"></span>
+  </div>
+
+  <div class="filter-bar" id="filter-bar"></div>
+  <div class="summary-cards" id="summary-cards"></div>
+
+  <div class="chart-section">
+    <h2>Cost-Performance Frontier</h2>
+    <div id="pareto-chart"></div>
+  </div>
+
+  <div class="h2h-section" id="h2h-section">
+    <h2>Head-to-Head: Claude Opus 4.6 vs Claude Sonnet 4.6</h2>
+    <div id="h2h-body"></div>
+  </div>
+
+  <div class="table-section">
+    <h2>Results by Instance</h2>
+    <div class="table-wrap">
+      <table class="results-table" id="results-table">
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="detail-overlay" id="detail-overlay"></div>
+<div class="detail-panel" id="detail-panel">
+  <div class="detail-header">
+    <h3 id="detail-title"></h3>
+    <button class="detail-close" id="detail-close">&times;</button>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</div>
+
+<div class="loading" id="loading">Loading dashboard data&hellip;</div>
+
+<script>
+const MODEL_COLORS = {
+  'claude-haiku-4-5@20251001': '#58a6ff',
+  'claude-sonnet-4-6': '#3fb950',
+  'claude-opus-4-6': '#bc8cff',
+};
+const MODEL_SHORT = {
+  'claude-haiku-4-5@20251001': 'Claude Haiku 4.5',
+  'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+  'claude-opus-4-6': 'Claude Opus 4.6',
+};
+
+let DATA = null;
+let filters = { repos: new Set(), languages: new Set() };
+let sort = { col: 'instance', dir: 'asc' };
+let detail = null;
+
+function shortModel(m) { return MODEL_SHORT[m] || m; }
+function tip(text) { return ` <span class="info-tip">i<span class="tip-text">${text}</span></span>`; }
+
+function allRepos() {
+  return [...new Set(Object.values(DATA.instances).map(i => i.repo))].sort();
+}
+function allLanguages() {
+  return [...new Set(Object.values(DATA.instances).map(i => i.language))].sort();
+}
+
+function filteredInstanceIds() {
+  return Object.keys(DATA.instances).filter(id => {
+    const inst = DATA.instances[id];
+    if (filters.repos.size && !filters.repos.has(inst.repo)) return false;
+    if (filters.languages.size && !filters.languages.has(inst.language)) return false;
+    return true;
+  });
+}
+
+// ── Filters ──
+
+function renderFilters() {
+  const bar = document.getElementById('filter-bar');
+  bar.innerHTML = '';
+
+  bar.appendChild(makeFilterGroup('Repo', allRepos(), filters.repos, sel => {
+    filters.repos = sel;
+    renderAll();
+  }));
+  bar.appendChild(makeFilterGroup('Language', allLanguages(), filters.languages, sel => {
+    filters.languages = sel;
+    renderAll();
+  }));
+
+  const reset = document.createElement('button');
+  reset.className = 'filter-reset';
+  reset.textContent = 'Clear filters';
+  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); renderFilters(); renderAll(); };
+  bar.appendChild(reset);
+
+  const summary = document.createElement('span');
+  summary.className = 'filter-summary';
+  const fids = filteredInstanceIds();
+  summary.textContent = `Showing ${fids.length} of ${Object.keys(DATA.instances).length} instances`;
+  bar.appendChild(summary);
+}
+
+function makeFilterGroup(label, options, selected, onChange) {
+  const group = document.createElement('div');
+  group.className = 'filter-group';
+
+  const btn = document.createElement('button');
+  btn.className = 'filter-btn';
+  const updateBtn = () => {
+    btn.innerHTML = `${label} <span class="arrow">▼</span>`;
+    if (selected.size) btn.innerHTML += ` <span class="count">${selected.size}</span>`;
+  };
+  updateBtn();
+  btn.onclick = e => {
+    e.stopPropagation();
+    const dd = group.querySelector('.filter-dropdown');
+    const isOpen = dd.classList.contains('open');
+    document.querySelectorAll('.filter-dropdown.open').forEach(d => d.classList.remove('open'));
+    if (!isOpen) dd.classList.add('open');
+  };
+  group.appendChild(btn);
+
+  const dd = document.createElement('div');
+  dd.className = 'filter-dropdown';
+  options.forEach(opt => {
+    const lbl = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selected.has(opt);
+    cb.onchange = () => {
+      if (cb.checked) selected.add(opt);
+      else selected.delete(opt);
+      updateBtn();
+      onChange(selected);
+    };
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(opt));
+    dd.appendChild(lbl);
+  });
+  group.appendChild(dd);
+  return group;
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.filter-dropdown.open').forEach(d => d.classList.remove('open'));
+});
+
+// ── Summary Cards ──
+
+function renderSummaryCards() {
+  const container = document.getElementById('summary-cards');
+  container.innerHTML = '';
+  const ids = filteredInstanceIds();
+
+  DATA.models.forEach(model => {
+    const attempts = [];
+    ids.forEach(id => {
+      const runs = (DATA.runs[model] || {})[id];
+      if (runs) attempts.push(...runs);
+    });
+
+    const nInstances = ids.filter(id => (DATA.runs[model] || {})[id]).length;
+    const resolved = attempts.filter(a => a.r).length;
+    const total = attempts.length;
+    const solveRate = total ? (resolved / total * 100) : 0;
+    const avgCost = nInstances ? (attempts.reduce((s, a) => s + a.cost, 0) / nInstances) : 0;
+    const costPerSolve = resolved ? (attempts.reduce((s, a) => s + a.cost, 0) / resolved) : null;
+    const compileRate = total ? (attempts.filter(a => a.c).length / total * 100) : 0;
+    const walls = attempts.map(a => a.wall).sort((a, b) => a - b);
+    const medianWall = walls.length ? walls[Math.floor(walls.length / 2)] : 0;
+    const turnsList = attempts.map(a => a.turns).sort((a, b) => a - b);
+    const medianTurns = turnsList.length ? turnsList[Math.floor(turnsList.length / 2)] : 0;
+
+    const color = MODEL_COLORS[model] || '#58a6ff';
+    const card = document.createElement('div');
+    card.className = 'summary-card';
+    card.innerHTML = `
+      <div class="model-name" style="color:${color}">${shortModel(model)}</div>
+      <div class="primary-metric" style="color:${color}">${solveRate.toFixed(1)}%</div>
+      <div class="primary-label">Solve rate (${resolved}/${total} attempts)${tip('Fraction of individual attempts that fully resolved the issue (all fail-to-pass tests passing).')}</div>
+      <div class="metrics-grid">
+        <div class="metric-item">
+          <div class="metric-value">$${avgCost.toFixed(2)}</div>
+          <div class="metric-label">Avg cost / instance${tip('Total spend across all attempts on an instance, averaged over instances.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${costPerSolve !== null ? '$' + costPerSolve.toFixed(2) : 'N/A'}</div>
+          <div class="metric-label">Cost / solve${tip('Total spend divided by number of resolved attempts. N/A if nothing was solved.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${compileRate.toFixed(0)}%</div>
+          <div class="metric-label">Compile rate${tip('Fraction of attempts where the candidate patch compiled successfully.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${medianWall.toFixed(0)}s</div>
+          <div class="metric-label">Median wall-clock${tip('Median end-to-end time per attempt, including model inference and tool execution.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${medianTurns}</div>
+          <div class="metric-label">Median turns${tip('Median number of agentic turns (model responses) per attempt.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${nInstances}</div>
+          <div class="metric-label">Instances evaluated${tip('Number of unique problem instances this model has been evaluated on in the current filter.')}</div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ── Pareto Chart ──
+
+function renderParetoChart() {
+  const ids = filteredInstanceIds();
+  const traces = [];
+
+  DATA.models.forEach(model => {
+    const attempts = [];
+    ids.forEach(id => {
+      const runs = (DATA.runs[model] || {})[id];
+      if (runs) attempts.push(...runs);
+    });
+    if (!attempts.length) return;
+
+    const resolved = attempts.filter(a => a.r).length;
+    const total = attempts.length;
+    const rate = resolved / total;
+    const totalCost = attempts.reduce((s, a) => s + a.cost, 0);
+    const costPerResolved = resolved > 0 ? totalCost / resolved : null;
+
+    if (costPerResolved === null) return;
+
+    traces.push({
+      x: [costPerResolved],
+      y: [rate],
+      mode: 'markers+text',
+      type: 'scatter',
+      name: shortModel(model),
+      text: [shortModel(model)],
+      textposition: 'top center',
+      textfont: { color: MODEL_COLORS[model] || '#58a6ff', size: 13 },
+      marker: {
+        color: MODEL_COLORS[model] || '#58a6ff',
+        size: 14,
+        line: { width: 2, color: '#0d1117' },
+      },
+      hovertemplate: `<b>${shortModel(model)}</b><br>` +
+        `Resolution: %{y:.1%}<br>` +
+        `Cost/resolve: $%{x:.2f}<br>` +
+        `<extra></extra>`,
+    });
+  });
+
+  const layout = {
+    paper_bgcolor: '#161b22',
+    plot_bgcolor: '#161b22',
+    font: { color: '#e6edf3', family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+    xaxis: {
+      title: 'Cost per Resolved Problem ($)',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+      tickprefix: '$',
+    },
+    yaxis: {
+      title: 'Resolution Rate',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+      tickformat: '.0%',
+      range: [0, Math.max(0.5, ...traces.map(t => t.y[0] + 0.1))],
+    },
+    showlegend: false,
+    margin: { t: 30, r: 30, b: 60, l: 70 },
+    hovermode: 'closest',
+  };
+
+  Plotly.react('pareto-chart', traces, layout, { responsive: true, displayModeBar: false });
+}
+
+// ── Results Table ──
+
+function renderTable() {
+  const ids = filteredInstanceIds();
+  const thead = document.getElementById('table-head');
+  const tbody = document.getElementById('table-body');
+
+  const cols = [
+    { key: 'instance', label: 'Instance' },
+    { key: 'repo', label: 'Repo' },
+    { key: 'language', label: 'Lang' },
+    { key: 'patch_lines', label: 'Patch Lines' },
+    { key: 'files_touched', label: 'Files' },
+    ...DATA.models.map(m => ({ key: 'model:' + m, label: shortModel(m) })),
+  ];
+
+  thead.innerHTML = '<tr>' + cols.map(c => {
+    const arrow = sort.col === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th data-col="${c.key}">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
+  }).join('') + '</tr>';
+
+  thead.querySelectorAll('th').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (sort.col === col) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+      else { sort.col = col; sort.dir = 'asc'; }
+      renderTable();
+    };
+  });
+
+  const rows = ids.map(id => {
+    const inst = DATA.instances[id];
+    const modelStats = {};
+    DATA.models.forEach(m => {
+      const runs = (DATA.runs[m] || {})[id];
+      if (runs) {
+        const resolved = runs.filter(a => a.r).length;
+        modelStats[m] = { resolved, total: runs.length, rate: resolved / runs.length };
+      } else {
+        modelStats[m] = null;
+      }
+    });
+    return { id, inst, modelStats };
+  });
+
+  rows.sort((a, b) => {
+    let va, vb;
+    if (sort.col === 'instance') { va = a.id; vb = b.id; }
+    else if (sort.col === 'repo') { va = a.inst.repo; vb = b.inst.repo; }
+    else if (sort.col === 'language') { va = a.inst.language; vb = b.inst.language; }
+    else if (sort.col === 'patch_lines') { va = a.inst.patch_lines ?? 9999; vb = b.inst.patch_lines ?? 9999; }
+    else if (sort.col === 'files_touched') { va = a.inst.files_touched ?? 9999; vb = b.inst.files_touched ?? 9999; }
+    else if (sort.col.startsWith('model:')) {
+      const m = sort.col.slice(6);
+      va = a.modelStats[m] ? a.modelStats[m].rate : -1;
+      vb = b.modelStats[m] ? b.modelStats[m].rate : -1;
+    }
+    if (va < vb) return sort.dir === 'asc' ? -1 : 1;
+    if (va > vb) return sort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  tbody.innerHTML = rows.map(row => {
+    const shortId = row.id.replace('__', '/').replace(/-(\d+)$/, '#$1');
+    const cells = [
+      `<td><a href="${row.inst.issue_url}" target="_blank" rel="noopener">${shortId}</a></td>`,
+      `<td><span class="tag">${row.inst.repo.split('/')[1]}</span></td>`,
+      `<td><span class="tag">${row.inst.language}</span></td>`,
+      `<td>${row.inst.patch_lines ?? '--'}</td>`,
+      `<td>${row.inst.files_touched ?? '--'}</td>`,
+    ];
+    DATA.models.forEach(m => {
+      const s = row.modelStats[m];
+      if (!s) {
+        cells.push(`<td class="cell-none">--</td>`);
+      } else {
+        const pct = (s.rate * 100).toFixed(1);
+        const cls = s.rate === 1 ? 'cell-resolved' : s.rate > 0 ? 'cell-partial' : 'cell-failed';
+        cells.push(`<td class="cell-model ${cls}" data-instance="${row.id}" data-model="${m}">${s.resolved}/${s.total} (${pct}%)</td>`);
+      }
+    });
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.cell-model').forEach(td => {
+    td.onclick = () => openDetail(td.dataset.instance, td.dataset.model);
+  });
+}
+
+// ── Detail Panel ──
+
+function openDetail(instanceId, modelId) {
+  detail = { instanceId, modelId };
+  const runs = DATA.runs[modelId][instanceId];
+  const inst = DATA.instances[instanceId];
+  const shortId = instanceId.replace('__', '/').replace(/-(\d+)$/, '#$1');
+
+  document.getElementById('detail-title').textContent = `${shortId}  —  ${shortModel(modelId)}`;
+  document.getElementById('detail-overlay').classList.add('open');
+  document.getElementById('detail-panel').classList.add('open');
+
+  renderDetailAttempt(0);
+}
+
+function renderDetailAttempt(attemptIndex) {
+  const { instanceId, modelId } = detail;
+  const runs = DATA.runs[modelId][instanceId];
+  const body = document.getElementById('detail-body');
+
+  const tabs = runs.map((run, i) => {
+    const dotClass = run.r ? 'pass' : 'fail';
+    const active = i === attemptIndex ? 'active' : '';
+    return `<div class="attempt-tab ${active}" data-attempt="${i}">
+      <span class="status-dot ${dotClass}"></span>Attempt ${i}
+    </div>`;
+  }).join('');
+
+  const run = runs[attemptIndex];
+
+  const statsHtml = `
+    <div class="attempt-stats">
+      <div class="attempt-stat">
+        <div class="stat-value" style="color:${run.r ? 'var(--accent-green)' : 'var(--accent-red)'}">${run.r ? 'Resolved' : 'Failed'}</div>
+        <div class="stat-label">Status</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${run.c ? 'Yes' : 'No'}</div>
+        <div class="stat-label">Compiled</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">$${run.cost.toFixed(4)}</div>
+        <div class="stat-label">Cost</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${run.wall.toFixed(0)}s</div>
+        <div class="stat-label">Wall clock</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${run.turns}</div>
+        <div class="stat-label">Turns</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${run.tc}</div>
+        <div class="stat-label">Tool calls</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${(run.ti / 1000).toFixed(0)}k</div>
+        <div class="stat-label">Tokens in</div>
+      </div>
+      <div class="attempt-stat">
+        <div class="stat-value">${(run.to / 1000).toFixed(1)}k</div>
+        <div class="stat-label">Tokens out</div>
+      </div>
+    </div>
+  `;
+
+  const f2pHtml = run.f2p.length ? `
+    <div class="detail-section">
+      <h4>Fail-to-Pass Tests (${run.f2p.filter(t=>t.p).length}/${run.f2p.length})</h4>
+      <ul class="test-list">
+        ${run.f2p.map(t => `<li class="test-item ${t.p ? 'test-pass' : 'test-fail'}">
+          <span class="test-icon">${t.p ? '✓' : '✗'}</span>${t.n}
+        </li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  const p2pHtml = run.p2p.length ? `
+    <div class="detail-section">
+      <h4>Pass-to-Pass Tests (${run.p2p.filter(t=>t.p).length}/${run.p2p.length})</h4>
+      <ul class="test-list">
+        ${run.p2p.map(t => `<li class="test-item ${t.p ? 'test-pass' : 'test-fail'}">
+          <span class="test-icon">${t.p ? '✓' : '✗'}</span>${t.n}
+        </li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  const diffHtml = `
+    <div class="detail-section">
+      <h4>Candidate Patch</h4>
+      ${renderDiff(run.patch)}
+    </div>
+  `;
+
+  body.innerHTML = `
+    <div class="attempt-tabs">${tabs}</div>
+    ${statsHtml}
+    ${f2pHtml}
+    ${p2pHtml}
+    ${diffHtml}
+  `;
+
+  body.querySelectorAll('.attempt-tab').forEach(tab => {
+    tab.onclick = () => renderDetailAttempt(parseInt(tab.dataset.attempt));
+  });
+}
+
+function renderDiff(patch) {
+  if (!patch) return '<div class="diff-empty">No patch generated for this attempt.</div>';
+
+  const lines = patch.split('\n');
+  const html = lines.map(line => {
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (line.startsWith('diff --git') || line.startsWith('index ')) {
+      return `<div class="diff-line diff-file-header">${escaped}</div>`;
+    }
+    if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+      return `<div class="diff-line diff-file-header">${escaped}</div>`;
+    }
+    if (line.startsWith('@@')) {
+      return `<div class="diff-line diff-hunk">${escaped}</div>`;
+    }
+    if (line.startsWith('+')) {
+      return `<div class="diff-line diff-add">${escaped}</div>`;
+    }
+    if (line.startsWith('-')) {
+      return `<div class="diff-line diff-del">${escaped}</div>`;
+    }
+    return `<div class="diff-line">${escaped}</div>`;
+  }).join('');
+
+  return `<div class="diff-container">${html}</div>`;
+}
+
+function closeDetail() {
+  detail = null;
+  document.getElementById('detail-overlay').classList.remove('open');
+  document.getElementById('detail-panel').classList.remove('open');
+}
+
+document.getElementById('detail-overlay').onclick = closeDetail;
+document.getElementById('detail-close').onclick = closeDetail;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+// ── Render all ──
+
+// ── Head-to-Head ──
+
+function normalCDF(x) {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.SQRT2;
+  const t = 1.0 / (1.0 + 0.3275911 * x);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1.0 + sign * y);
+}
+
+function normalPPF(p) {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  if (p === 0.5) return 0;
+  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
+    1.383577518672690e2, -3.066479806614716e1, 2.506628277459239e0];
+  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
+    6.680131188771972e1, -1.328068155288572e1];
+  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0,
+    -2.549732539343734e0, 4.374664141464968e0, 2.938163982698783e0];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0, 3.754408661907416e0];
+  const pLow = 0.02425, pHigh = 1 - pLow;
+  let q, r;
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= pHigh) {
+    q = p - 0.5; r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+
+function chi2SF(x, df) {
+  if (x <= 0) return 1.0;
+  if (df === 1) {
+    const z = Math.sqrt(x);
+    return 2 * (1 - normalCDF(z));
+  }
+  return 1.0;
+}
+
+function mcnemar(resolvedA, resolvedB) {
+  let b = 0, c = 0;
+  for (let i = 0; i < resolvedA.length; i++) {
+    if (resolvedA[i] && !resolvedB[i]) b++;
+    if (!resolvedA[i] && resolvedB[i]) c++;
+  }
+  if (b + c === 0) return { statistic: 0, pValue: 1.0, b, c };
+  const stat = (Math.abs(b - c) - 1) ** 2 / (b + c);
+  const pValue = chi2SF(stat, 1);
+  return { statistic: stat, pValue, b, c };
+}
+
+function connorPower(pDiscordant, delta, alpha = 0.05, power = 0.80) {
+  const disc = pDiscordant - delta * delta;
+  if (disc <= 0) return null;
+  const zAlpha = normalPPF(1 - alpha / 2);
+  const zBeta = normalPPF(power);
+  const num = (zAlpha * Math.sqrt(pDiscordant) + zBeta * Math.sqrt(disc)) ** 2;
+  return Math.ceil(num / (delta * delta));
+}
+
+function renderH2H() {
+  const body = document.getElementById('h2h-body');
+  const ids = filteredInstanceIds();
+  const opusModel = 'claude-opus-4-6';
+  const sonnetModel = 'claude-sonnet-4-6';
+  const opusRuns = DATA.runs[opusModel] || {};
+  const sonnetRuns = DATA.runs[sonnetModel] || {};
+
+  const sharedIds = ids.filter(id => opusRuns[id] && sonnetRuns[id]);
+
+  if (sharedIds.length === 0) {
+    body.innerHTML = '<div class="h2h-empty">No instances with both Opus and Sonnet results in the current filter.</div>';
+    return;
+  }
+
+  const opusResolved = [], sonnetResolved = [];
+  let opusTotalCost = 0, sonnetTotalCost = 0;
+  let opusTotalWall = 0, sonnetTotalWall = 0;
+  let opusTotalAttempts = 0, sonnetTotalAttempts = 0;
+
+  sharedIds.forEach(id => {
+    const oRuns = opusRuns[id];
+    const sRuns = sonnetRuns[id];
+    const oSolved = oRuns.some(a => a.r);
+    const sSolved = sRuns.some(a => a.r);
+    opusResolved.push(oSolved);
+    sonnetResolved.push(sSolved);
+    oRuns.forEach(a => { opusTotalCost += a.cost; opusTotalWall += a.wall; });
+    sRuns.forEach(a => { sonnetTotalCost += a.cost; sonnetTotalWall += a.wall; });
+    opusTotalAttempts += oRuns.length;
+    sonnetTotalAttempts += sRuns.length;
+  });
+
+  const opusSolveRate = opusResolved.filter(Boolean).length / sharedIds.length;
+  const sonnetSolveRate = sonnetResolved.filter(Boolean).length / sharedIds.length;
+  const opusAvgCost = opusTotalCost / sharedIds.length;
+  const sonnetAvgCost = sonnetTotalCost / sharedIds.length;
+  const opusAvgWall = opusTotalWall / opusTotalAttempts;
+  const sonnetAvgWall = sonnetTotalWall / sonnetTotalAttempts;
+
+  const { statistic, pValue, b, c } = mcnemar(opusResolved, sonnetResolved);
+  const n = sharedIds.length;
+  const pDisc = (b + c) / n;
+  const delta = 0.10;
+
+  let requiredN = null;
+  let requiredNText = '--';
+  if (pDisc > delta * delta) {
+    requiredN = connorPower(pDisc, delta, 0.05, 0.80);
+    requiredNText = requiredN !== null ? requiredN.toString() : '--';
+  } else if (b + c > 0) {
+    requiredNText = '>1000';
+  }
+
+  const isPowered = requiredN !== null && n >= requiredN;
+  const opusColor = MODEL_COLORS[opusModel];
+  const sonnetColor = MODEL_COLORS[sonnetModel];
+
+  const opusBarW = (opusSolveRate * 100).toFixed(1);
+  const sonnetBarW = (sonnetSolveRate * 100).toFixed(1);
+
+  const pLabel = pValue < 0.001 ? 'p < 0.001' : pValue < 0.01 ? `p = ${pValue.toFixed(3)}` : `p = ${pValue.toFixed(2)}`;
+  const sigClass = pValue < 0.05 ? 'h2h-powered' : 'h2h-underpowered';
+
+  function fmtDelta(opusVal, sonnetVal, higherBetter) {
+    if (!sonnetVal) return '';
+    const pct = ((opusVal - sonnetVal) / sonnetVal) * 100;
+    const sign = pct >= 0 ? '+' : '';
+    const cls = pct === 0 ? 'neutral' : ((pct > 0) === higherBetter ? 'better' : 'worse');
+    return `<span class="h2h-delta ${cls}">(${sign}${pct.toFixed(0)}%)</span>`;
+  }
+
+  const solveDelta = fmtDelta(opusSolveRate, sonnetSolveRate, true);
+  const costDelta = fmtDelta(opusAvgCost, sonnetAvgCost, false);
+  const wallDelta = fmtDelta(opusAvgWall, sonnetAvgWall, false);
+
+  body.innerHTML = `
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+      <div>
+        <div style="font-size:13px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:12px;">
+          Resolution Rate (instance-level, any attempt)
+        </div>
+        <div class="h2h-bar-row">
+          <div class="h2h-bar-label" style="color:${opusColor}">Opus 4.6</div>
+          <div class="h2h-bar-track">
+            <div class="h2h-bar-fill" style="width:${opusBarW}%; background:${opusColor};">${(opusSolveRate*100).toFixed(1)}%</div>
+          </div>
+          <div class="h2h-bar-value">${opusResolved.filter(Boolean).length}/${n} ${solveDelta}</div>
+        </div>
+        <div class="h2h-bar-row">
+          <div class="h2h-bar-label" style="color:${sonnetColor}">Sonnet 4.6</div>
+          <div class="h2h-bar-track">
+            <div class="h2h-bar-fill" style="width:${sonnetBarW}%; background:${sonnetColor};">${(sonnetSolveRate*100).toFixed(1)}%</div>
+          </div>
+          <div class="h2h-bar-value">${sonnetResolved.filter(Boolean).length}/${n}</div>
+        </div>
+      </div>
+      <div class="h2h-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="h2h-stat">
+          <div class="stat-value" style="color:${opusColor}">$${opusAvgCost.toFixed(2)} ${costDelta}</div>
+          <div class="stat-label">Opus 4.6 avg cost/inst</div>
+        </div>
+        <div class="h2h-stat">
+          <div class="stat-value" style="color:${sonnetColor}">$${sonnetAvgCost.toFixed(2)}</div>
+          <div class="stat-label">Sonnet 4.6 avg cost/inst</div>
+        </div>
+        <div class="h2h-stat">
+          <div class="stat-value" style="color:${opusColor}">${opusAvgWall.toFixed(0)}s ${wallDelta}</div>
+          <div class="stat-label">Opus 4.6 avg wall-clock</div>
+        </div>
+        <div class="h2h-stat">
+          <div class="stat-value" style="color:${sonnetColor}">${sonnetAvgWall.toFixed(0)}s</div>
+          <div class="stat-label">Sonnet 4.6 avg wall-clock</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="h2h-power">
+      <div class="power-title">Statistical Power (McNemar paired test, Connor 1987 sizing)</div>
+      <div class="power-row">
+        <span class="label">Shared instances${tip('Number of problem instances where both Opus and Sonnet have at least one attempt.')}</span>
+        <span>${n}</span>
+      </div>
+      <div class="power-row">
+        <span class="label">Discordant pairs${tip('Instances where one model solved it and the other didn\'t. b = Opus 4.6-only solves, c = Sonnet 4.6-only solves.')}</span>
+        <span>${b + c} (b=${b} Opus 4.6-only, c=${c} Sonnet 4.6-only)</span>
+      </div>
+      <div class="power-row">
+        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: Opus and Sonnet solve the same instances).')}</span>
+        <span class="${sigClass}">${pLabel}${pValue < 0.05 ? ' — significant' : ' — not yet significant'}</span>
+      </div>
+      <div class="power-row">
+        <span class="label">Required N for p=0.05${tip('Connor (1987) sample size for 80% power to detect a 10pp difference in paired proportions, given the observed discordance rate.')}</span>
+        <span class="${isPowered ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} instances${isPowered ? ' (powered)' : ` (need ${requiredN !== null ? requiredN - n : '?'} more)`}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderAll() {
+  renderSummaryCards();
+  renderParetoChart();
+  renderH2H();
+  renderTable();
+}
+
+// ── Init ──
+
+async function init() {
+  try {
+    const resp = await fetch('data.json');
+    if (!resp.ok) throw new Error(`Failed to load data.json: ${resp.status}`);
+    DATA = await resp.json();
+  } catch (err) {
+    document.getElementById('loading').innerHTML = `<div class="error-banner">${err.message}<br>Run: <code>python3 scripts/export_dashboard_data.py</code></div>`;
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+
+  const ts = new Date(DATA.generated_at);
+  document.getElementById('timestamp').textContent = `Updated ${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}`;
+
+  renderFilters();
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>
