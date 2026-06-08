@@ -249,7 +249,7 @@ def apply_quarantine(result: GradeResult, instance: SWEbenchInstance) -> GradeRe
     def keep_f2p(r: TestResult) -> bool:
         if r.name in quarantine_set:
             return False
-        if instance.product == "etcd" and not _is_unit_test(r.name):
+        if instance.product == "etcd-io/etcd" and not _is_unit_test(r.name):
             return False
         return True
 

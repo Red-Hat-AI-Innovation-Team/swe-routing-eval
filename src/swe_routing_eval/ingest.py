@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 
 class SchemaError(Exception):
@@ -34,7 +34,7 @@ class SWEbenchInstance(BaseModel):
 
     # SWE-benchify additive columns
     repo_language: str
-    product: str
+    product: str = ""
     fix_merge_date: str
     provenance: str
     link_confidence: float
@@ -42,8 +42,8 @@ class SWEbenchInstance(BaseModel):
     patch_lines: int
     files_touched: int
     cross_file: bool
-    env_spec_hash: str
-    image_name: str
+    env_spec_hash: str = ""
+    image_name: str = ""
     # compiled is a validation-phase field; not all emitted instances carry it.
     compiled: bool = True
 
@@ -57,6 +57,16 @@ class SWEbenchInstance(BaseModel):
     # Used by SwebenchifyGrader to know which tests to check.
     fail_to_pass: list[str] = Field(alias="FAIL_TO_PASS", default_factory=list)
     pass_to_pass: list[str] = Field(alias="PASS_TO_PASS", default_factory=list)
+
+    @field_validator("product", "env_spec_hash", "image_name", mode="before")
+    @classmethod
+    def _coerce_nullable_str(cls, v: Any) -> str:
+        return v if isinstance(v, str) else ""
+
+    @model_validator(mode="after")
+    def _product_from_repo(self) -> "SWEbenchInstance":
+        self.product = self.repo
+        return self
 
     @field_validator("fail_to_pass", "pass_to_pass", mode="before")
     @classmethod

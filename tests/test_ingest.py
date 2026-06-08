@@ -58,7 +58,7 @@ def test_load_valid_record(tmp_path: Path) -> None:
     instances = load(p)
     assert len(instances) == 1
     assert instances[0].instance_id == "kubectl-12345"
-    assert instances[0].product == "kubectl"
+    assert instances[0].product == "kubernetes/kubectl"
     assert instances[0].quarantined_tests == []
 
 

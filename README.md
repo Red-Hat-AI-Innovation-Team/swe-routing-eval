@@ -28,7 +28,7 @@ Emit JSONL instances     Build Pareto frontier + output memo + plot
 | `src/swe_routing_eval/cost.py` | Vertex pricing table, n-tier cascade cost model |
 | `src/swe_routing_eval/stats.py` | Bootstrap CI, paired McNemar test, Connor (1987) power sizing |
 | `src/swe_routing_eval/frontier.py` | Pareto frontier, memo renderer, frontier plot |
-| `src/swe_routing_eval/orchestrator.py` | Sweep scheduler — parallel attempts, resume, budget guard |
+| `src/swe_routing_eval/orchestrator.py` | Sweep scheduler — parallel attempts, resume, budget guard, workspace cleanup |
 | `src/swe_routing_eval/scaffold.py` | Fixed SWE-agent-style scaffold (bash + finish tools) |
 | `scripts/eval_sweep.py` | Run or dry-run the model × instance × attempt matrix |
 | `scripts/m0_coverage_check.py` | M0 gate: grade gold patches, verify all resolve |
@@ -112,6 +112,11 @@ The sweep is **resumable** — rerunning the same command skips already-complete
 (model, instance, attempt) triples. If the grader fails on an instance,
 a sentinel record is written so that instance is not retried indefinitely.
 
+Workspaces are created lazily (one per worker thread) and cleaned up
+automatically after each attempt finishes. Disk usage during a sweep is
+bounded by `--workers`, not by total instance count. The shared repo clones
+in `_cache/` are preserved across runs.
+
 Filter to instances from a specific year:
 
 ```bash
@@ -175,5 +180,5 @@ cost      = c₁ + (1−p₁)·c₂ + (1−p₁)·(1−p₂)·c₃ + …
 ```bash
 ruff check .    # lint
 mypy src/       # type-check
-pytest tests/   # test suite (171 tests, ~1s)
+pytest tests/   # test suite (181 tests, ~1s)
 ```
