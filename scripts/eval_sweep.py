@@ -135,7 +135,22 @@ def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
 
 
 def _workspace_cleanup(workspace_dir: Path) -> None:
-    shutil.rmtree(workspace_dir, ignore_errors=True)
+    git_file = workspace_dir / ".git"
+    if git_file.is_file():
+        try:
+            content = git_file.read_text().strip()
+            if content.startswith("gitdir: "):
+                gitdir = Path(content.split("gitdir: ", 1)[1])
+                repo_root = gitdir.parent.parent.parent
+                subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(workspace_dir)],
+                    cwd=str(repo_root),
+                    capture_output=True,
+                )
+        except Exception:
+            pass
+    if workspace_dir.exists():
+        shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
