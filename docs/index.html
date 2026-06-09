@@ -145,6 +145,11 @@ body {
   font-weight: 700;
   margin-bottom: 16px;
 }
+.summary-card .secondary-metric {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
 .summary-card .primary-label {
   font-size: 12px;
   color: var(--text-secondary);
@@ -457,6 +462,28 @@ body {
   font-weight: 600;
   margin-bottom: 16px;
 }
+.h2h-toggle {
+  display: inline-flex;
+  gap: 0;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+.h2h-toggle button {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.h2h-toggle button:first-child { border-radius: 4px 0 0 4px; }
+.h2h-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.h2h-toggle button.active {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
 .h2h-empty {
   color: var(--text-secondary);
   font-size: 14px;
@@ -608,12 +635,17 @@ body {
   <div class="summary-cards" id="summary-cards"></div>
 
   <div class="chart-section">
-    <h2>Cost-Performance Frontier</h2>
+    <h2>Cost-Performance Frontier <span class="info-tip">i<span class="tip-text">Each model is plotted by its cost per resolved problem (x) vs. resolution rate (y). Circles show pass@1 (single-attempt). Diamonds show pass@3 (at least one of 3 attempts resolved), with cost calculated as total spend across all attempts divided by instances solved.</span></span></h2>
     <div id="pareto-chart"></div>
   </div>
 
   <div class="h2h-section" id="h2h-section">
-    <h2>Head-to-Head: Claude Opus 4.6 vs Claude Sonnet 4.6</h2>
+    <h2>Head-to-Head: Claude Opus 4.6 vs Claude Sonnet 4.6
+      <span class="h2h-toggle" id="h2h-toggle">
+        <button data-mode="pass1" class="active">pass@1</button>
+        <button data-mode="pass3">pass@3</button>
+      </span>
+    </h2>
     <div id="h2h-body"></div>
   </div>
 
@@ -766,6 +798,12 @@ function renderSummaryCards() {
     const resolved = attempts.filter(a => a.r).length;
     const total = attempts.length;
     const solveRate = total ? (resolved / total * 100) : 0;
+    let instancesSolved = 0;
+    ids.forEach(id => {
+      const runs = (DATA.runs[model] || {})[id];
+      if (runs && runs.some(a => a.r)) instancesSolved++;
+    });
+    const passAt3 = nInstances ? (instancesSolved / nInstances * 100) : 0;
     const avgCost = nInstances ? (attempts.reduce((s, a) => s + a.cost, 0) / nInstances) : 0;
     const costPerSolve = resolved ? (attempts.reduce((s, a) => s + a.cost, 0) / resolved) : null;
     const goAttempts = [];
@@ -786,7 +824,9 @@ function renderSummaryCards() {
     card.innerHTML = `
       <div class="model-name" style="color:${color}">${shortModel(model)}</div>
       <div class="primary-metric" style="color:${color}">${solveRate.toFixed(1)}%</div>
-      <div class="primary-label">Solve rate (${resolved}/${total} attempts)${tip('Fraction of individual attempts that fully resolved the issue (all fail-to-pass tests passing).')}</div>
+      <div class="primary-label">pass@1 (${resolved}/${total} attempts)${tip('Fraction of individual attempts that fully resolved the issue (all fail-to-pass tests passing).')}</div>
+      <div class="secondary-metric" style="color:${color}">${passAt3.toFixed(1)}%</div>
+      <div class="primary-label">pass@3 (${instancesSolved}/${nInstances} instances)${tip('Fraction of instances where at least one of the 3 attempts resolved the issue.')}</div>
       <div class="metrics-grid">
         <div class="metric-item">
           <div class="metric-value">$${avgCost.toFixed(2)}</div>
@@ -826,6 +866,7 @@ function renderParetoChart() {
 
   DATA.models.forEach(model => {
     const attempts = [];
+    const nInstances = ids.filter(id => (DATA.runs[model] || {})[id]).length;
     ids.forEach(id => {
       const runs = (DATA.runs[model] || {})[id];
       if (runs) attempts.push(...runs);
@@ -840,25 +881,48 @@ function renderParetoChart() {
 
     if (costPerResolved === null) return;
 
+    const color = MODEL_COLORS[model] || '#58a6ff';
+
     traces.push({
       x: [costPerResolved],
       y: [rate],
       mode: 'markers+text',
       type: 'scatter',
-      name: shortModel(model),
+      name: shortModel(model) + ' pass@1',
       text: [shortModel(model)],
       textposition: 'top center',
-      textfont: { color: MODEL_COLORS[model] || '#58a6ff', size: 13 },
-      marker: {
-        color: MODEL_COLORS[model] || '#58a6ff',
-        size: 14,
-        line: { width: 2, color: '#0d1117' },
-      },
-      hovertemplate: `<b>${shortModel(model)}</b><br>` +
+      textfont: { color, size: 13 },
+      marker: { color, size: 14, line: { width: 2, color: '#0d1117' } },
+      hovertemplate: `<b>${shortModel(model)} (pass@1)</b><br>` +
         `Resolution: %{y:.1%}<br>` +
         `Cost/resolve: $%{x:.2f}<br>` +
         `<extra></extra>`,
     });
+
+    let instancesSolved = 0;
+    ids.forEach(id => {
+      const runs = (DATA.runs[model] || {})[id];
+      if (runs && runs.some(a => a.r)) instancesSolved++;
+    });
+    if (instancesSolved > 0) {
+      const passAt3Rate = instancesSolved / nInstances;
+      const costPerResolvedAt3 = totalCost / instancesSolved;
+      traces.push({
+        x: [costPerResolvedAt3],
+        y: [passAt3Rate],
+        mode: 'markers+text',
+        type: 'scatter',
+        name: shortModel(model) + ' pass@3',
+        text: [shortModel(model) + ' @3'],
+        textposition: 'top center',
+        textfont: { color, size: 11 },
+        marker: { color, size: 10, symbol: 'diamond', line: { width: 2, color: '#0d1117' } },
+        hovertemplate: `<b>${shortModel(model)} (pass@3)</b><br>` +
+          `Resolution: %{y:.1%}<br>` +
+          `Cost/resolve: $%{x:.2f}<br>` +
+          `<extra></extra>`,
+      });
+    }
   });
 
   const layout = {
@@ -1189,6 +1253,16 @@ function connorPower(pDiscordant, delta, alpha = 0.05, power = 0.80) {
   return Math.ceil(num / (delta * delta));
 }
 
+let h2hMode = 'pass1';
+
+document.getElementById('h2h-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-mode]');
+  if (!btn) return;
+  h2hMode = btn.dataset.mode;
+  document.querySelectorAll('#h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+  renderH2H();
+});
+
 function renderH2H() {
   const body = document.getElementById('h2h-body');
   const ids = filteredInstanceIds();
@@ -1212,26 +1286,42 @@ function renderH2H() {
   sharedIds.forEach(id => {
     const oRuns = opusRuns[id];
     const sRuns = sonnetRuns[id];
-    const oSolved = oRuns.some(a => a.r);
-    const sSolved = sRuns.some(a => a.r);
-    opusResolved.push(oSolved);
-    sonnetResolved.push(sSolved);
+    if (h2hMode === 'pass3') {
+      opusResolved.push(oRuns.some(a => a.r));
+      sonnetResolved.push(sRuns.some(a => a.r));
+    } else {
+      const k = Math.min(oRuns.length, sRuns.length);
+      for (let i = 0; i < k; i++) {
+        opusResolved.push(!!oRuns[i].r);
+        sonnetResolved.push(!!sRuns[i].r);
+      }
+    }
     oRuns.forEach(a => { opusTotalCost += a.cost; opusTotalWall += a.wall; });
     sRuns.forEach(a => { sonnetTotalCost += a.cost; sonnetTotalWall += a.wall; });
     opusTotalAttempts += oRuns.length;
     sonnetTotalAttempts += sRuns.length;
   });
 
-  const opusSolveRate = opusResolved.filter(Boolean).length / sharedIds.length;
-  const sonnetSolveRate = sonnetResolved.filter(Boolean).length / sharedIds.length;
-  const opusAvgCost = opusTotalCost / sharedIds.length;
-  const sonnetAvgCost = sonnetTotalCost / sharedIds.length;
-  const opusAvgWall = opusTotalWall / opusTotalAttempts;
-  const sonnetAvgWall = sonnetTotalWall / sonnetTotalAttempts;
+  const opusResolvedCount = opusResolved.filter(Boolean).length;
+  const sonnetResolvedCount = sonnetResolved.filter(Boolean).length;
+  const nPairs = opusResolved.length;
+  const opusSolveRate = nPairs ? opusResolvedCount / nPairs : 0;
+  const sonnetSolveRate = nPairs ? sonnetResolvedCount / nPairs : 0;
+  const opusAvgCost = h2hMode === 'pass3'
+    ? opusTotalCost / sharedIds.length
+    : opusTotalCost / opusTotalAttempts;
+  const sonnetAvgCost = h2hMode === 'pass3'
+    ? sonnetTotalCost / sharedIds.length
+    : sonnetTotalCost / sonnetTotalAttempts;
+  const opusAvgWall = h2hMode === 'pass3'
+    ? opusTotalWall / sharedIds.length
+    : opusTotalWall / opusTotalAttempts;
+  const sonnetAvgWall = h2hMode === 'pass3'
+    ? sonnetTotalWall / sharedIds.length
+    : sonnetTotalWall / sonnetTotalAttempts;
 
   const { statistic, pValue, b, c } = mcnemar(opusResolved, sonnetResolved);
-  const n = sharedIds.length;
-  const pDisc = (b + c) / n;
+  const pDisc = nPairs ? (b + c) / nPairs : 0;
   const delta = 0.10;
 
   let requiredN = null;
@@ -1243,7 +1333,8 @@ function renderH2H() {
     requiredNText = '>1000';
   }
 
-  const isPowered = requiredN !== null && n >= requiredN;
+  const isSignificant = pValue < 0.05;
+  const isPowered = isSignificant || (requiredN !== null && nPairs >= requiredN);
   const opusColor = MODEL_COLORS[opusModel];
   const sonnetColor = MODEL_COLORS[sonnetModel];
 
@@ -1269,39 +1360,39 @@ function renderH2H() {
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
       <div>
         <div style="font-size:13px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:12px;">
-          Resolution Rate (instance-level, any attempt)
+          Resolution Rate (${h2hMode === 'pass3' ? 'instance-level, any attempt' : 'per attempt'})
         </div>
         <div class="h2h-bar-row">
           <div class="h2h-bar-label" style="color:${opusColor}">Opus 4.6</div>
           <div class="h2h-bar-track">
             <div class="h2h-bar-fill" style="width:${opusBarW}%; background:${opusColor};">${(opusSolveRate*100).toFixed(1)}%</div>
           </div>
-          <div class="h2h-bar-value">${opusResolved.filter(Boolean).length}/${n} ${solveDelta}</div>
+          <div class="h2h-bar-value">${opusResolvedCount}/${nPairs} ${solveDelta}</div>
         </div>
         <div class="h2h-bar-row">
           <div class="h2h-bar-label" style="color:${sonnetColor}">Sonnet 4.6</div>
           <div class="h2h-bar-track">
             <div class="h2h-bar-fill" style="width:${sonnetBarW}%; background:${sonnetColor};">${(sonnetSolveRate*100).toFixed(1)}%</div>
           </div>
-          <div class="h2h-bar-value">${sonnetResolved.filter(Boolean).length}/${n}</div>
+          <div class="h2h-bar-value">${sonnetResolvedCount}/${nPairs}</div>
         </div>
       </div>
       <div class="h2h-grid" style="grid-template-columns: 1fr 1fr;">
         <div class="h2h-stat">
           <div class="stat-value" style="color:${opusColor}">$${opusAvgCost.toFixed(2)} ${costDelta}</div>
-          <div class="stat-label">Opus 4.6 avg cost/inst</div>
+          <div class="stat-label">Opus 4.6 ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${sonnetColor}">$${sonnetAvgCost.toFixed(2)}</div>
-          <div class="stat-label">Sonnet 4.6 avg cost/inst</div>
+          <div class="stat-label">Sonnet 4.6 ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${opusColor}">${opusAvgWall.toFixed(0)}s ${wallDelta}</div>
-          <div class="stat-label">Opus 4.6 avg wall-clock</div>
+          <div class="stat-label">Opus 4.6 ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${sonnetColor}">${sonnetAvgWall.toFixed(0)}s</div>
-          <div class="stat-label">Sonnet 4.6 avg wall-clock</div>
+          <div class="stat-label">Sonnet 4.6 ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
       </div>
     </div>
@@ -1309,20 +1400,20 @@ function renderH2H() {
     <div class="h2h-power">
       <div class="power-title">Statistical Power (McNemar paired test, Connor 1987 sizing)</div>
       <div class="power-row">
-        <span class="label">Shared instances${tip('Number of problem instances where both Opus and Sonnet have at least one attempt.')}</span>
-        <span>${n}</span>
+        <span class="label">Paired observations${tip(h2hMode === 'pass3' ? 'Number of shared instances (one observation per instance).' : 'Number of paired attempts (one per attempt index per shared instance).')}</span>
+        <span>${nPairs}${h2hMode === 'pass1' ? ` (${sharedIds.length} instances × paired attempts)` : ' instances'}</span>
       </div>
       <div class="power-row">
-        <span class="label">Discordant pairs${tip('Instances where one model solved it and the other didn\'t. b = Opus 4.6-only solves, c = Sonnet 4.6-only solves.')}</span>
+        <span class="label">Discordant pairs${tip(h2hMode === 'pass3' ? 'Instances where one model solved and the other didn\'t.' : 'Attempt pairs where one model solved and the other didn\'t.')}</span>
         <span>${b + c} (b=${b} Opus 4.6-only, c=${c} Sonnet 4.6-only)</span>
       </div>
       <div class="power-row">
-        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: Opus and Sonnet solve the same instances).')}</span>
+        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: Opus and Sonnet solve the same ' + (h2hMode === 'pass3' ? 'instances' : 'attempts') + ').')}</span>
         <span class="${sigClass}">${pLabel}${pValue < 0.05 ? ' — significant' : ' — not yet significant'}</span>
       </div>
       <div class="power-row">
         <span class="label">Required N for p=0.05${tip('Connor (1987) sample size for 80% power to detect a 10pp difference in paired proportions, given the observed discordance rate.')}</span>
-        <span class="${isPowered ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} instances${isPowered ? ' (powered)' : ` (need ${requiredN !== null ? requiredN - n : '?'} more)`}</span>
+        <span class="${isPowered ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${h2hMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : isPowered ? ' (powered)' : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
       </div>
     </div>
   `;
