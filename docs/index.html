@@ -685,7 +685,7 @@ const MODEL_SHORT = {
 
 let DATA = null;
 let filters = { repos: new Set(), languages: new Set() };
-let sort = { col: 'instance', dir: 'asc' };
+let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
 
 function shortModel(m) { return MODEL_SHORT[m] || m; }
@@ -787,7 +787,7 @@ function renderSummaryCards() {
   container.innerHTML = '';
   const ids = filteredInstanceIds();
 
-  DATA.models.forEach(model => {
+  [...DATA.models].reverse().forEach(model => {
     const attempts = [];
     ids.forEach(id => {
       const runs = (DATA.runs[model] || {})[id];
@@ -961,6 +961,7 @@ function renderTable() {
     { key: 'instance', label: 'Instance' },
     { key: 'repo', label: 'Repo' },
     { key: 'language', label: 'Lang' },
+    { key: 'fix_merge_date', label: 'Patch Date' },
     { key: 'patch_lines', label: 'Patch Lines' },
     { key: 'files_touched', label: 'Files' },
     ...DATA.models.map(m => ({ key: 'model:' + m, label: shortModel(m) })),
@@ -996,17 +997,20 @@ function renderTable() {
   });
 
   rows.sort((a, b) => {
-    let va, vb;
+    let va, vb, aN = false, bN = false;
     if (sort.col === 'instance') { va = a.id; vb = b.id; }
     else if (sort.col === 'repo') { va = a.inst.repo; vb = b.inst.repo; }
     else if (sort.col === 'language') { va = a.inst.language; vb = b.inst.language; }
-    else if (sort.col === 'patch_lines') { va = a.inst.patch_lines ?? 9999; vb = b.inst.patch_lines ?? 9999; }
-    else if (sort.col === 'files_touched') { va = a.inst.files_touched ?? 9999; vb = b.inst.files_touched ?? 9999; }
+    else if (sort.col === 'fix_merge_date') { va = a.inst.fix_merge_date; vb = b.inst.fix_merge_date; aN = va == null; bN = vb == null; }
+    else if (sort.col === 'patch_lines') { va = a.inst.patch_lines; vb = b.inst.patch_lines; aN = va == null; bN = vb == null; }
+    else if (sort.col === 'files_touched') { va = a.inst.files_touched; vb = b.inst.files_touched; aN = va == null; bN = vb == null; }
     else if (sort.col.startsWith('model:')) {
       const m = sort.col.slice(6);
-      va = a.modelStats[m] ? a.modelStats[m].rate : -1;
-      vb = b.modelStats[m] ? b.modelStats[m].rate : -1;
+      va = a.modelStats[m] ? a.modelStats[m].rate : null;
+      vb = b.modelStats[m] ? b.modelStats[m].rate : null;
+      aN = va == null; bN = vb == null;
     }
+    if (aN !== bN) return aN ? 1 : -1;
     if (va < vb) return sort.dir === 'asc' ? -1 : 1;
     if (va > vb) return sort.dir === 'asc' ? 1 : -1;
     return 0;
@@ -1018,6 +1022,7 @@ function renderTable() {
       `<td><a href="${row.inst.issue_url}" target="_blank" rel="noopener">${shortId}</a></td>`,
       `<td><span class="tag">${row.inst.repo.split('/')[1]}</span></td>`,
       `<td><span class="tag">${row.inst.language}</span></td>`,
+      `<td>${row.inst.fix_merge_date ? new Date(row.inst.fix_merge_date).toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'}) : '--'}</td>`,
       `<td>${row.inst.patch_lines ?? '--'}</td>`,
       `<td>${row.inst.files_touched ?? '--'}</td>`,
     ];
@@ -1432,6 +1437,8 @@ function renderIntro() {
       Each model is given a bug report and repository checkout, then autonomously explores the code,
       writes a fix, and is graded against the project's own test suite.
       The goal: determine which model tier resolves the most bugs per dollar.
+      Instances are mined from recent PRs with <a href="https://github.com/Red-Hat-AI-Innovation-Team/SWE-benchify" target="_blank" rel="noopener">SWE-benchify</a>;
+      eval harness code is at <a href="https://github.com/Red-Hat-AI-Innovation-Team/swe-routing-eval" target="_blank" rel="noopener">swe-routing-eval</a>.
     </p>
     <dl class="intro-details">
       <div><dt>Models</dt><dd>${DATA.models.map(shortModel).join(', ')}</dd></div>

@@ -59,7 +59,11 @@ def main() -> None:
             inst_by_id[inst.instance_id] = inst
 
     run_instance_ids = {r.instance_id for r in records}
-    models = sorted({r.model_id for r in records})
+    MODEL_ORDER = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5@20251001"]
+    seen_models = {r.model_id for r in records}
+    models = [m for m in MODEL_ORDER if m in seen_models] + sorted(
+        seen_models - set(MODEL_ORDER)
+    )
 
     instances_out = {}
     for iid in sorted(run_instance_ids):
@@ -73,6 +77,7 @@ def main() -> None:
                 "cross_file": inst.cross_file,
                 "n_fail_to_pass": inst.n_fail_to_pass,
                 "issue_url": issue_url(iid),
+                "fix_merge_date": inst.fix_merge_date,
             }
         else:
             owner, repo_name, _ = parse_instance_id(iid)
@@ -84,6 +89,7 @@ def main() -> None:
                 "cross_file": None,
                 "n_fail_to_pass": None,
                 "issue_url": issue_url(iid),
+                "fix_merge_date": None,
             }
 
     runs_out: dict[str, dict[str, list]] = {}
