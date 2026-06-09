@@ -6,7 +6,6 @@ dist/
 build/
 .venv/
 venv/
-*.db
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
