@@ -548,6 +548,27 @@ body {
 .h2h-delta.worse { color: var(--accent-red); }
 .h2h-delta.neutral { color: var(--text-secondary); }
 
+/* Intro */
+.intro {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 24px;
+  max-width: 900px;
+}
+.intro strong { color: var(--text-primary); }
+.intro a { color: var(--accent-blue); text-decoration: none; }
+.intro a:hover { text-decoration: underline; }
+.intro-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 24px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.intro-details dt { color: var(--text-secondary); }
+.intro-details dd { color: var(--text-primary); font-weight: 500; margin: 0 0 4px 0; }
+
 /* Loading / error */
 .loading {
   text-align: center;
@@ -579,6 +600,8 @@ body {
     <h1>Red Hat SWE-bench Dashboard</h1>
     <span class="timestamp" id="timestamp"></span>
   </div>
+
+  <div class="intro" id="intro"></div>
 
   <div class="filter-bar" id="filter-bar"></div>
   <div class="summary-cards" id="summary-cards"></div>
@@ -1298,6 +1321,31 @@ function renderH2H() {
   `;
 }
 
+function renderIntro() {
+  const nInst = Object.keys(DATA.instances).length;
+  const nRuns = Object.values(DATA.runs).reduce((s, m) => s + Object.values(m).reduce((s2, a) => s2 + a.length, 0), 0);
+  const repos = [...new Set(Object.values(DATA.instances).map(i => i.repo))];
+  const langs = [...new Set(Object.values(DATA.instances).map(i => i.language))];
+
+  document.getElementById('intro').innerHTML = `
+    <p>
+      Evaluating <strong>Claude model tiers</strong> on real-world bugs from Red Hat's open-source ecosystem
+      using <a href="https://arxiv.org/abs/2504.02605" target="_blank" rel="noopener">Multi-SWE-bench</a>.
+      Each model is given a bug report and repository checkout, then autonomously explores the code,
+      writes a fix, and is graded against the project's own test suite.
+      The goal: determine which model tier resolves the most bugs per dollar.
+    </p>
+    <dl class="intro-details">
+      <div><dt>Models</dt><dd>${DATA.models.map(shortModel).join(', ')}</dd></div>
+      <div><dt>Instances</dt><dd>${nInst} problems across ${repos.length} repos</dd></div>
+      <div><dt>Total attempts</dt><dd>${nRuns} (k=3 per model per instance)</dd></div>
+      <div><dt>Languages</dt><dd>${langs.join(', ')}</dd></div>
+      <div><dt>Scaffold</dt><dd>Fixed SWE-agent (bash + finish, 30-turn cap)</dd></div>
+      <div><dt>Grading</dt><dd>Docker-isolated, fail-to-pass + pass-to-pass tests</dd></div>
+    </dl>
+  `;
+}
+
 function renderAll() {
   renderSummaryCards();
   renderParetoChart();
@@ -1322,6 +1370,7 @@ async function init() {
   const ts = new Date(DATA.generated_at);
   document.getElementById('timestamp').textContent = `Updated ${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}`;
 
+  renderIntro();
   renderFilters();
   renderAll();
 }
