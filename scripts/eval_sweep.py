@@ -85,7 +85,7 @@ def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
                 _clone_locks[repo] = threading.Lock()
             return _clone_locks[repo]
 
-    def factory(instance: object, attempt_idx: int) -> Path:
+    def factory(instance: object, attempt_idx: int, model_id: str = "") -> Path:
         from swe_routing_eval.ingest import SWEbenchInstance
 
         assert isinstance(instance, SWEbenchInstance)
@@ -111,7 +111,8 @@ def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
 
         # Each attempt gets its own worktree at base_commit — lightweight and instant.
         import shutil
-        wt_name = f"{instance.instance_id}_attempt{attempt_idx}"
+        tier_suffix = f"_{model_id.split('-')[1]}" if model_id else ""
+        wt_name = f"{instance.instance_id}_attempt{attempt_idx}{tier_suffix}"
         wt_path = workspace_root / wt_name
         if wt_path.exists():
             # Try registered worktree removal first; fall back to plain rmtree

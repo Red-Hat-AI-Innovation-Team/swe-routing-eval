@@ -91,7 +91,7 @@ def _mock_grader(resolved: bool = True) -> MagicMock:
     return grader
 
 
-def _workspace_factory(inst: SWEbenchInstance, idx: int) -> Path:
+def _workspace_factory(inst: SWEbenchInstance, idx: int, model_id: str = "") -> Path:
     return Path("/tmp/fake-workspace")
 
 

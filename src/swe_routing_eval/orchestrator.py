@@ -29,7 +29,7 @@ from swe_routing_eval.vertex import Tier, VertexConfig
 
 logger = logging.getLogger(__name__)
 
-WorkspaceFactory = Callable[[SWEbenchInstance, int], Path]
+WorkspaceFactory = Callable[[SWEbenchInstance, int, str], Path]
 
 
 @dataclass
@@ -227,7 +227,7 @@ class Orchestrator:
         workspace_factory: WorkspaceFactory,
         workspace_cleanup: Callable[[Path], None] | None = None,
     ) -> RunRecord:
-        workspace_dir = workspace_factory(instance, attempt_idx)
+        workspace_dir = workspace_factory(instance, attempt_idx, model_id)
         try:
             t0 = time.monotonic()
             attempt: AttemptResult = self._scaffold.run(
