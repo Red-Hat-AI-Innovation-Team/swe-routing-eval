@@ -160,6 +160,8 @@ Key flags:
 
 ### 5. Dashboard
 
+Live at **https://ai-innovation.team/swe-routing-eval/**
+
 A static dashboard served via GitHub Pages. Regenerate the data file
 after new runs and commit it:
 
