@@ -34,6 +34,8 @@ Emit JSONL instances     Build Pareto frontier + output memo + plot
 | `scripts/m0_coverage_check.py` | M0 gate: grade gold patches, verify all resolve |
 | `scripts/analyze_runs.py` | Produce frontier, memo, and plot from a completed run store |
 | `scripts/watch_sweep.py` | Live progress display while a sweep is running |
+| `scripts/export_dashboard_data.py` | Export `runs.db` + instances to `docs/data.json` for the dashboard |
+| `docs/index.html` | Static GitHub Pages dashboard (Plotly.js, vanilla JS) |
 | `config/prices.json` | Vertex pricing at RH committed-use rates |
 
 ## Setup
@@ -155,6 +157,29 @@ Key flags:
 - `--delta` — minimum detectable resolution-rate difference (default 0.10)
 - `--power` — target power for Connor sample-size formula (default 0.80)
 - `--no-plot` — skip matplotlib if not installed
+
+### 5. Dashboard
+
+A static dashboard served via GitHub Pages. Regenerate the data file
+after new runs and commit it:
+
+```bash
+python3 scripts/export_dashboard_data.py
+```
+
+This reads `runs.db` and `instances.jsonl` / `instances-go.jsonl`,
+then writes `docs/data.json`. The dashboard at `docs/index.html` loads
+this file client-side — no server required.
+
+To preview locally:
+
+```bash
+python3 -m http.server 8765 --directory docs
+open http://localhost:8765
+```
+
+To publish, commit and push `docs/data.json`, then enable GitHub Pages
+in repo settings (source: main branch, `/docs` folder).
 
 ## Metrics
 
