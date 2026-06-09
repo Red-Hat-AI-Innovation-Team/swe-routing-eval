@@ -151,8 +151,8 @@ class Orchestrator:
 
         work = [
             (tier, inst, attempt_idx)
-            for tier in sweep_config.model_tiers
             for inst in instances
+            for tier in sweep_config.model_tiers
             for attempt_idx in range(sweep_config.k_attempts)
         ]
         pending = [
