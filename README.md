@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Red-Hat-AI-Innovation-Team/swe-routing-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/Red-Hat-AI-Innovation-Team/swe-routing-eval/actions/workflows/ci.yml)
 
+**Dashboard: https://ai-innovation.team/swe-routing-eval/**
+
 Cost/quality routing evaluator for Go software-engineering benchmarks. Answers the
 question: **for a given population of bugs, which Claude model tier (or escalation
 cascade) resolves the most bugs per dollar?**
@@ -159,8 +161,6 @@ Key flags:
 - `--no-plot` — skip matplotlib if not installed
 
 ### 5. Dashboard
-
-Live at **https://ai-innovation.team/swe-routing-eval/**
 
 A static dashboard served via GitHub Pages. Regenerate the data file
 after new runs and commit it:
