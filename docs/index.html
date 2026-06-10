@@ -51,6 +51,11 @@ body {
   align-items: center;
   margin-bottom: 24px;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-primary);
+  padding: 12px 0;
 }
 .filter-bar label { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
 .filter-group { position: relative; display: inline-block; }
@@ -717,10 +722,13 @@ function renderFilters() {
     filters.repos = sel;
     renderAll();
   }));
-  bar.appendChild(makeFilterGroup('Language', allLanguages(), filters.languages, sel => {
-    filters.languages = sel;
-    renderAll();
-  }));
+  const langs = allLanguages();
+  if (langs.length > 1) {
+    bar.appendChild(makeFilterGroup('Language', langs, filters.languages, sel => {
+      filters.languages = sel;
+      renderAll();
+    }));
+  }
 
   const reset = document.createElement('button');
   reset.className = 'filter-reset';
