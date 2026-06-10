@@ -1339,7 +1339,8 @@ function renderH2H() {
   }
 
   const isSignificant = pValue < 0.05;
-  const isPowered = isSignificant || (requiredN !== null && nPairs >= requiredN);
+  const hasPower = requiredN !== null && nPairs >= requiredN;
+  const poweredNoSignal = hasPower && !isSignificant;
   const opusColor = MODEL_COLORS[opusModel];
   const sonnetColor = MODEL_COLORS[sonnetModel];
 
@@ -1418,7 +1419,7 @@ function renderH2H() {
       </div>
       <div class="power-row">
         <span class="label">Required N for p=0.05${tip('Connor (1987) sample size for 80% power to detect a 10pp difference in paired proportions, given the observed discordance rate.')}</span>
-        <span class="${isPowered ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${h2hMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : isPowered ? ' (powered)' : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
+        <span class="${isSignificant ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${h2hMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : poweredNoSignal ? ` (powered — ${pValue < 0.10 ? 'borderline, may reach significance' : 'no significant difference detected'})` : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
       </div>
     </div>
   `;
