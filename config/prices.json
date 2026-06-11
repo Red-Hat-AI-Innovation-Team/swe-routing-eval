@@ -15,6 +15,14 @@
     "input_per_1k_tokens": 0.00025,
     "output_per_1k_tokens": 0.00125
   },
+  "claude-4.6-sonnet-medium-thinking": {
+    "input_per_1k_tokens": 0.003,
+    "output_per_1k_tokens": 0.015
+  },
+  "claude-4.6-opus-max-thinking": {
+    "input_per_1k_tokens": 0.015,
+    "output_per_1k_tokens": 0.075
+  },
   "gpt-5.3-codex-xhigh": {
     "input_per_1k_tokens": 0.00175,
     "output_per_1k_tokens": 0.014

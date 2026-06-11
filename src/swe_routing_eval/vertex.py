@@ -11,7 +11,9 @@ import os
 from dataclasses import dataclass
 from typing import Literal
 
-Tier = Literal["opus", "sonnet", "haiku", "gpt-5.4-medium"]
+Tier = Literal["opus", "sonnet", "haiku"]
+
+VERTEX_TIERS: set[str] = {"opus", "sonnet", "haiku"}
 
 _REQUIRED_ENV = {
     "project_id": "ANTHROPIC_VERTEX_PROJECT_ID",
@@ -39,8 +41,9 @@ class VertexConfig:
     sonnet_model_id: str
     haiku_model_id: str
 
-    def model_id(self, tier: Tier) -> str:
-        """Return the pinned Model Garden model ID for the given tier."""
+    def model_id(self, tier: str) -> str:
+        """Return the pinned Model Garden model ID for Vertex tiers, or
+        the tier string itself for CLI scaffold tiers."""
         match tier:
             case "opus":
                 return self.opus_model_id
@@ -48,7 +51,7 @@ class VertexConfig:
                 return self.sonnet_model_id
             case "haiku":
                 return self.haiku_model_id
-            case t if t.startswith("gpt-"):
+            case t if t not in VERTEX_TIERS:
                 return t
             case _:
                 raise ValueError(f"Unknown tier: {tier!r}")

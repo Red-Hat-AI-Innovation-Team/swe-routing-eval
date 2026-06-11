@@ -518,7 +518,8 @@ body {
 .h2h-bar-label {
   font-size: 13px;
   font-weight: 600;
-  min-width: 80px;
+  width: 120px;
+  flex-shrink: 0;
   text-align: right;
 }
 .h2h-bar-track {
@@ -543,7 +544,8 @@ body {
 }
 .h2h-bar-value {
   font-size: 13px;
-  min-width: 60px;
+  width: 120px;
+  flex-shrink: 0;
   text-align: left;
   color: var(--text-secondary);
 }
@@ -634,10 +636,11 @@ body {
     <span class="timestamp" id="timestamp"></span>
   </div>
 
-  <div class="intro" id="intro"></div>
-
   <div class="filter-bar" id="filter-bar"></div>
-  <div class="summary-cards" id="summary-cards"></div>
+
+  <div class="intro" id="intro"></div>
+  <div class="summary-cards" id="summary-cards-anthropic"></div>
+  <div class="summary-cards" id="summary-cards-gpt"></div>
 
   <div class="chart-section">
     <h2>Cost-Performance Frontier <span class="info-tip">i<span class="tip-text">Each model is plotted by its cost per resolved problem (x) vs. resolution rate (y). Circles show pass@1 (single-attempt). Diamonds show pass@3 (at least one of 3 attempts resolved), with cost calculated as total spend across all attempts divided by instances solved.</span></span></h2>
@@ -645,7 +648,7 @@ body {
   </div>
 
   <div class="h2h-section" id="h2h-section">
-    <h2>Head-to-Head: Claude Opus 4.6 vs Claude Sonnet 4.6
+    <h2 id="h2h-title">Head-to-Head
       <span class="h2h-toggle" id="h2h-toggle">
         <button data-mode="pass1" class="active">pass@1</button>
         <button data-mode="pass3">pass@3</button>
@@ -679,17 +682,27 @@ body {
 <script>
 const MODEL_COLORS = {
   'claude-haiku-4-5@20251001': '#58a6ff',
-  'claude-sonnet-4-6': '#3fb950',
+  'claude-sonnet-4-6': '#2dd4bf',
   'claude-opus-4-6': '#bc8cff',
+  'claude-4.6-sonnet-medium-thinking': '#a78bfa',
+  'claude-4.6-opus-max-thinking': '#c084fc',
+  'gpt-5.3-codex-xhigh': '#f97316',
+  'gpt-5.4-medium': '#fb923c',
+  'gpt-5.4-xhigh': '#f472b6',
 };
 const MODEL_SHORT = {
   'claude-haiku-4-5@20251001': 'Claude Haiku 4.5',
   'claude-sonnet-4-6': 'Claude Sonnet 4.6',
   'claude-opus-4-6': 'Claude Opus 4.6',
+  'claude-4.6-sonnet-medium-thinking': 'Sonnet 4.6 (Cursor)',
+  'claude-4.6-opus-max-thinking': 'Opus 4.6 (Cursor)',
+  'gpt-5.3-codex-xhigh': 'GPT-5.3 Codex',
+  'gpt-5.4-medium': 'GPT-5.4',
+  'gpt-5.4-xhigh': 'GPT-5.4',
 };
 
 let DATA = null;
-let filters = { repos: new Set(), languages: new Set() };
+let filters = { repos: new Set(), languages: new Set(), scaffold: 'Vertex' };
 let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
 
@@ -701,6 +714,26 @@ function allRepos() {
 }
 function allLanguages() {
   return [...new Set(Object.values(DATA.instances).map(i => i.language))].sort();
+}
+
+function modelScaffold(model) {
+  const runs = DATA.runs[model];
+  if (!runs) return 'Vertex';
+  for (const instRuns of Object.values(runs)) {
+    for (const a of instRuns) {
+      if (a.cli) return 'Cursor CLI';
+    }
+  }
+  return 'Vertex';
+}
+
+function allScaffolds() {
+  return [...new Set(DATA.models.map(modelScaffold))].sort().reverse();
+}
+
+function filteredModels() {
+  if (filters.scaffold === 'all') return DATA.models;
+  return DATA.models.filter(m => modelScaffold(m) === filters.scaffold);
 }
 
 function filteredInstanceIds() {
@@ -729,18 +762,42 @@ function renderFilters() {
       renderAll();
     }));
   }
+  const scaffolds = allScaffolds();
+  if (scaffolds.length > 1) {
+    const toggle = document.createElement('span');
+    toggle.className = 'h2h-toggle';
+    toggle.style.marginLeft = '8px';
+    scaffolds.forEach(label => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (filters.scaffold === label) btn.classList.add('active');
+      btn.onclick = () => {
+        if (filters.scaffold === label) {
+          filters.scaffold = 'all';
+        } else {
+          filters.scaffold = label;
+        }
+        toggle.querySelectorAll('button').forEach(b =>
+          b.classList.toggle('active', filters.scaffold === b.textContent)
+        );
+        renderAll();
+      };
+      toggle.appendChild(btn);
+    });
+    bar.appendChild(toggle);
+  }
 
   const reset = document.createElement('button');
   reset.className = 'filter-reset';
   reset.textContent = 'Clear filters';
-  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); renderFilters(); renderAll(); };
+  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); filters.scaffold = 'Vertex'; renderFilters(); renderAll(); };
   bar.appendChild(reset);
 
   const summary = document.createElement('span');
   summary.className = 'filter-summary';
-  const fids = filteredInstanceIds();
-  summary.textContent = `Showing ${fids.length} of ${Object.keys(DATA.instances).length} instances`;
+  summary.id = 'filter-summary';
   bar.appendChild(summary);
+  updateFilterSummary();
 }
 
 function makeFilterGroup(label, options, selected, onChange) {
@@ -791,11 +848,13 @@ document.addEventListener('click', () => {
 // ── Summary Cards ──
 
 function renderSummaryCards() {
-  const container = document.getElementById('summary-cards');
-  container.innerHTML = '';
+  const anthropicContainer = document.getElementById('summary-cards-anthropic');
+  const gptContainer = document.getElementById('summary-cards-gpt');
+  anthropicContainer.innerHTML = '';
+  gptContainer.innerHTML = '';
   const ids = filteredInstanceIds();
 
-  [...DATA.models].reverse().forEach(model => {
+  [...filteredModels()].reverse().forEach(model => {
     const attempts = [];
     ids.forEach(id => {
       const runs = (DATA.runs[model] || {})[id];
@@ -862,8 +921,14 @@ function renderSummaryCards() {
         </div>
       </div>
     `;
+    const container = model.startsWith('gpt-') ? gptContainer : anthropicContainer;
     container.appendChild(card);
   });
+
+  if (gptContainer.children.length && anthropicContainer.children.length) {
+    const cols = getComputedStyle(anthropicContainer).gridTemplateColumns;
+    gptContainer.style.gridTemplateColumns = cols;
+  }
 }
 
 // ── Pareto Chart ──
@@ -872,7 +937,7 @@ function renderParetoChart() {
   const ids = filteredInstanceIds();
   const traces = [];
 
-  DATA.models.forEach(model => {
+  filteredModels().forEach(model => {
     const attempts = [];
     const nInstances = ids.filter(id => (DATA.runs[model] || {})[id]).length;
     ids.forEach(id => {
@@ -972,7 +1037,7 @@ function renderTable() {
     { key: 'fix_merge_date', label: 'Patch Date' },
     { key: 'patch_lines', label: 'Patch Lines' },
     { key: 'files_touched', label: 'Files' },
-    ...DATA.models.map(m => ({ key: 'model:' + m, label: shortModel(m) })),
+    ...filteredModels().map(m => ({ key: 'model:' + m, label: shortModel(m) })),
   ];
 
   thead.innerHTML = '<tr>' + cols.map(c => {
@@ -992,7 +1057,7 @@ function renderTable() {
   const rows = ids.map(id => {
     const inst = DATA.instances[id];
     const modelStats = {};
-    DATA.models.forEach(m => {
+    filteredModels().forEach(m => {
       const runs = (DATA.runs[m] || {})[id];
       if (runs) {
         const resolved = runs.filter(a => a.r).length;
@@ -1034,7 +1099,7 @@ function renderTable() {
       `<td>${row.inst.patch_lines ?? '--'}</td>`,
       `<td>${row.inst.files_touched ?? '--'}</td>`,
     ];
-    DATA.models.forEach(m => {
+    filteredModels().forEach(m => {
       const s = row.modelStats[m];
       if (!s) {
         cells.push(`<td class="cell-none">--</td>`);
@@ -1268,26 +1333,42 @@ function connorPower(pDiscordant, delta, alpha = 0.05, power = 0.80) {
 
 let h2hMode = 'pass1';
 
-document.getElementById('h2h-toggle').addEventListener('click', e => {
-  const btn = e.target.closest('button[data-mode]');
-  if (!btn) return;
-  h2hMode = btn.dataset.mode;
-  document.querySelectorAll('#h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
-  renderH2H();
-});
+const H2H_PAIRS = [
+  { models: ['claude-opus-4-6', 'claude-sonnet-4-6'], scaffold: 'Vertex' },
+  { models: ['gpt-5.4-xhigh', 'gpt-5.3-codex-xhigh'], scaffold: 'Cursor CLI' },
+];
 
 function renderH2H() {
+  const section = document.getElementById('h2h-section');
   const body = document.getElementById('h2h-body');
+  const models = filteredModels();
+  const pair = H2H_PAIRS.find(p => p.models.every(m => models.includes(m)));
+  if (!pair) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  const [modelA, modelB] = pair.models;
+  const labelA = shortModel(modelA);
+  const labelB = shortModel(modelB);
+  const titleEl = document.getElementById('h2h-title');
+  const toggleHTML = `<span class="h2h-toggle"><button data-mode="pass1"${h2hMode === 'pass1' ? ' class="active"' : ''}>pass@1</button><button data-mode="pass3"${h2hMode === 'pass3' ? ' class="active"' : ''}>pass@3</button></span>`;
+  titleEl.innerHTML = `Head-to-Head: ${labelA} vs ${labelB} ${toggleHTML}`;
+  titleEl.querySelector('.h2h-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    h2hMode = btn.dataset.mode;
+    titleEl.querySelectorAll('.h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+    renderH2H();
+  });
   const ids = filteredInstanceIds();
-  const opusModel = 'claude-opus-4-6';
-  const sonnetModel = 'claude-sonnet-4-6';
-  const opusRuns = DATA.runs[opusModel] || {};
-  const sonnetRuns = DATA.runs[sonnetModel] || {};
+  const opusRuns = DATA.runs[modelA] || {};
+  const sonnetRuns = DATA.runs[modelB] || {};
 
   const sharedIds = ids.filter(id => opusRuns[id] && sonnetRuns[id]);
 
   if (sharedIds.length === 0) {
-    body.innerHTML = '<div class="h2h-empty">No instances with both Opus and Sonnet results in the current filter.</div>';
+    body.innerHTML = `<div class="h2h-empty">No instances with both ${labelA} and ${labelB} results in the current filter.</div>`;
     return;
   }
 
@@ -1349,8 +1430,8 @@ function renderH2H() {
   const isSignificant = pValue < 0.05;
   const hasPower = requiredN !== null && nPairs >= requiredN;
   const poweredNoSignal = hasPower && !isSignificant;
-  const opusColor = MODEL_COLORS[opusModel];
-  const sonnetColor = MODEL_COLORS[sonnetModel];
+  const opusColor = MODEL_COLORS[modelA] || '#58a6ff';
+  const sonnetColor = MODEL_COLORS[modelB] || '#58a6ff';
 
   const opusBarW = (opusSolveRate * 100).toFixed(1);
   const sonnetBarW = (sonnetSolveRate * 100).toFixed(1);
@@ -1377,14 +1458,14 @@ function renderH2H() {
           Resolution Rate (${h2hMode === 'pass3' ? 'instance-level, any attempt' : 'per attempt'})
         </div>
         <div class="h2h-bar-row">
-          <div class="h2h-bar-label" style="color:${opusColor}">Opus 4.6</div>
+          <div class="h2h-bar-label" style="color:${opusColor}">${labelA}</div>
           <div class="h2h-bar-track">
             <div class="h2h-bar-fill" style="width:${opusBarW}%; background:${opusColor};">${(opusSolveRate*100).toFixed(1)}%</div>
           </div>
           <div class="h2h-bar-value">${opusResolvedCount}/${nPairs} ${solveDelta}</div>
         </div>
         <div class="h2h-bar-row">
-          <div class="h2h-bar-label" style="color:${sonnetColor}">Sonnet 4.6</div>
+          <div class="h2h-bar-label" style="color:${sonnetColor}">${labelB}</div>
           <div class="h2h-bar-track">
             <div class="h2h-bar-fill" style="width:${sonnetBarW}%; background:${sonnetColor};">${(sonnetSolveRate*100).toFixed(1)}%</div>
           </div>
@@ -1394,19 +1475,19 @@ function renderH2H() {
       <div class="h2h-grid" style="grid-template-columns: 1fr 1fr;">
         <div class="h2h-stat">
           <div class="stat-value" style="color:${opusColor}">$${opusAvgCost.toFixed(2)} ${costDelta}</div>
-          <div class="stat-label">Opus 4.6 ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
+          <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${sonnetColor}">$${sonnetAvgCost.toFixed(2)}</div>
-          <div class="stat-label">Sonnet 4.6 ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
+          <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${opusColor}">${opusAvgWall.toFixed(0)}s ${wallDelta}</div>
-          <div class="stat-label">Opus 4.6 ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
+          <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${sonnetColor}">${sonnetAvgWall.toFixed(0)}s</div>
-          <div class="stat-label">Sonnet 4.6 ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
+          <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
       </div>
     </div>
@@ -1419,10 +1500,10 @@ function renderH2H() {
       </div>
       <div class="power-row">
         <span class="label">Discordant pairs${tip(h2hMode === 'pass3' ? 'Instances where one model solved and the other didn\'t.' : 'Attempt pairs where one model solved and the other didn\'t.')}</span>
-        <span>${b + c} (b=${b} Opus 4.6-only, c=${c} Sonnet 4.6-only)</span>
+        <span>${b + c} (b=${b} ${labelA}-only, c=${c} ${labelB}-only)</span>
       </div>
       <div class="power-row">
-        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: Opus and Sonnet solve the same ' + (h2hMode === 'pass3' ? 'instances' : 'attempts') + ').')}</span>
+        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: both models solve the same ' + (h2hMode === 'pass3' ? 'instances' : 'attempts') + ').')}</span>
         <span class="${sigClass}">${pLabel}${pValue < 0.05 ? ' — significant' : ' — not yet significant'}</span>
       </div>
       <div class="power-row">
@@ -1434,14 +1515,27 @@ function renderH2H() {
 }
 
 function renderIntro() {
-  const nInst = Object.keys(DATA.instances).length;
-  const nRuns = Object.values(DATA.runs).reduce((s, m) => s + Object.values(m).reduce((s2, a) => s2 + a.length, 0), 0);
-  const repos = [...new Set(Object.values(DATA.instances).map(i => i.repo))];
+  const models = filteredModels();
+  const ids = filteredInstanceIds();
+  const instSet = new Set();
+  const repoSet = new Set();
+  let nRuns = 0;
+  models.forEach(m => {
+    const modelRuns = DATA.runs[m] || {};
+    ids.forEach(id => {
+      const runs = modelRuns[id];
+      if (runs) {
+        instSet.add(id);
+        repoSet.add(DATA.instances[id].repo);
+        nRuns += runs.length;
+      }
+    });
+  });
   const langs = [...new Set(Object.values(DATA.instances).map(i => i.language))];
 
   document.getElementById('intro').innerHTML = `
     <p>
-      Evaluating <strong>Claude model tiers</strong> on real-world bugs from Red Hat's open-source ecosystem
+      Evaluating <strong>AI models</strong> on real-world bugs from Red Hat's open-source ecosystem
       using <a href="https://arxiv.org/abs/2504.02605" target="_blank" rel="noopener">Multi-SWE-bench</a>.
       Each model is given a bug report and repository checkout, then autonomously explores the code,
       writes a fix, and is graded against the project's own test suite.
@@ -1450,17 +1544,27 @@ function renderIntro() {
       eval harness code is at <a href="https://github.com/Red-Hat-AI-Innovation-Team/swe-routing-eval" target="_blank" rel="noopener">swe-routing-eval</a>.
     </p>
     <dl class="intro-details">
-      <div><dt>Models</dt><dd>${DATA.models.map(shortModel).join(', ')}</dd></div>
-      <div><dt>Instances</dt><dd>${nInst} problems across ${repos.length} repos</dd></div>
+      <div><dt>Models</dt><dd>${models.map(shortModel).join(', ')}</dd></div>
+      <div><dt>Instances</dt><dd>${instSet.size} problems across ${repoSet.size} repos</dd></div>
       <div><dt>Total attempts</dt><dd>${nRuns} (k=3 per model per instance)</dd></div>
       <div><dt>Languages</dt><dd>${langs.join(', ')}</dd></div>
-      <div><dt>Scaffold</dt><dd>Fixed SWE-agent (bash + finish, 30-turn cap)</dd></div>
       <div><dt>Grading</dt><dd>Docker-isolated, fail-to-pass + pass-to-pass tests</dd></div>
     </dl>
   `;
 }
 
+function updateFilterSummary() {
+  const el = document.getElementById('filter-summary');
+  if (!el) return;
+  const fids = filteredInstanceIds();
+  const models = filteredModels();
+  const visibleIds = fids.filter(id => models.some(m => (DATA.runs[m] || {})[id]));
+  el.textContent = `Showing ${visibleIds.length} of ${Object.keys(DATA.instances).length} instances`;
+}
+
 function renderAll() {
+  updateFilterSummary();
+  renderIntro();
   renderSummaryCards();
   renderParetoChart();
   renderH2H();

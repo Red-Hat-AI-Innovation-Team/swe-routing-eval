@@ -110,6 +110,7 @@ def main() -> None:
                 "tc": r.tool_calls,
                 "wall": round(r.wall_clock_s, 1),
                 "cost": round(r.cost_usd, 4),
+                "cli": r.cli_scaffold,
             }
         )
 

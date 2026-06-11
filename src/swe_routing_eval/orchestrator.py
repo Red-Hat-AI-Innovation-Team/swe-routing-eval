@@ -25,7 +25,7 @@ from swe_routing_eval.grading import Grader, GraderError, safe_grade
 from swe_routing_eval.ingest import SWEbenchInstance
 from swe_routing_eval.scaffold import AttemptResult, CLIScaffold, Scaffold
 from swe_routing_eval.store import RunRecord, Store
-from swe_routing_eval.vertex import Tier, VertexConfig
+from swe_routing_eval.vertex import VERTEX_TIERS, VertexConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ WorkspaceFactory = Callable[[SWEbenchInstance, int, str], Path]
 
 @dataclass
 class SweepConfig:
-    model_tiers: list[Tier]
+    model_tiers: list[str]
     k_attempts: int
     max_workers: int = 4
     base_seed: int = 0
@@ -99,9 +99,9 @@ class Orchestrator:
         n_instances: int,
         avg_tokens_in: int = 450_000,
         avg_tokens_out: int = 7_000,
-    ) -> dict[Tier, float]:
+    ) -> dict[str, float]:
         """Return projected total cost per tier without running any inference."""
-        projection: dict[Tier, float] = {}
+        projection: dict[str, float] = {}
         for tier in sweep_config.model_tiers:
             model_id = self._vertex_config.model_id(tier)
             pricing = self._price_table._lookup(model_id)
@@ -185,12 +185,13 @@ class Orchestrator:
         warn_threshold = budget.max_spend_usd * budget.warn_at_fraction
 
         with ThreadPoolExecutor(max_workers=sweep_config.max_workers) as pool:
-            future_to_key: dict[Future[RunRecord], tuple[Tier, str, int]] = {}
+            future_to_key: dict[Future[RunRecord], tuple[str, str, int]] = {}
             for tier, inst, idx in pending:
                 seed = sweep_config.base_seed + idx
                 model_id = self._vertex_config.model_id(tier)
                 future = pool.submit(
                     self._run_one,
+                    tier=tier,
                     model_id=model_id,
                     instance=inst,
                     attempt_idx=idx,
@@ -250,6 +251,7 @@ class Orchestrator:
 
     def _run_one(
         self,
+        tier: str,
         model_id: str,
         instance: SWEbenchInstance,
         attempt_idx: int,
@@ -260,8 +262,13 @@ class Orchestrator:
         workspace_dir = workspace_factory(instance, attempt_idx, model_id)
         try:
             t0 = time.monotonic()
-            use_cli = bool(self._cli_scaffold and model_id.startswith("gpt-"))
-            scaffold = self._cli_scaffold if use_cli else self._scaffold
+            scaffold: CLIScaffold | Scaffold
+            if self._cli_scaffold is not None and tier not in VERTEX_TIERS:
+                use_cli = True
+                scaffold = self._cli_scaffold
+            else:
+                use_cli = False
+                scaffold = self._scaffold
             attempt: AttemptResult = scaffold.run(
                 instance=instance,
                 workspace_dir=workspace_dir,

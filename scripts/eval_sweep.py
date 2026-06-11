@@ -55,9 +55,7 @@ from swe_routing_eval.orchestrator import (
 )
 from swe_routing_eval.scaffold import CLIScaffold, Scaffold
 from swe_routing_eval.store import FileStore
-from swe_routing_eval.vertex import ConfigError, Tier, VertexConfig
-
-_ANTHROPIC_TIERS: set[Tier] = {"opus", "sonnet", "haiku"}
+from swe_routing_eval.vertex import VERTEX_TIERS, ConfigError, VertexConfig
 
 
 def _load_price_table(path: Path) -> PriceTable:
@@ -181,7 +179,8 @@ def main(argv: list[str] | None = None) -> int:
         nargs="+",
         default=["sonnet"],
         metavar="TIER",
-        help="Model tiers to evaluate: opus, sonnet, haiku (default: sonnet)",
+        help="Model tiers to evaluate: opus, sonnet, haiku (Vertex), "
+             "or any Cursor CLI model ID (default: sonnet)",
     )
     parser.add_argument(
         "--k", type=int, default=3, help="Attempts per (model, instance) (default: 3)"
@@ -242,16 +241,6 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    # Validate tiers
-    invalid = [t for t in args.tiers if t not in _ANTHROPIC_TIERS and not t.startswith("gpt-")]
-    if invalid:
-        print(
-            f"error: unknown tiers: {invalid}. "
-            f"Anthropic: {sorted(_ANTHROPIC_TIERS)}, or any gpt-* tier",
-            file=sys.stderr,
-        )
-        return 2
-
     # Load inputs
     print(f"Loading instances from {args.instances_jsonl} …")
     instances = load(args.instances_jsonl)
@@ -262,8 +251,20 @@ def main(argv: list[str] | None = None) -> int:
 
     price_table = _load_price_table(args.price_table)
 
-    # Vertex config is only needed when Anthropic tiers are requested.
-    needs_vertex = bool(set(args.tiers) & _ANTHROPIC_TIERS)
+    # Validate tiers: Vertex tiers are known statically; CLI tiers must have
+    # a pricing entry in the price table.
+    cli_tiers = [t for t in args.tiers if t not in VERTEX_TIERS]
+    missing_prices = [t for t in cli_tiers if t not in price_table.tiers]
+    if missing_prices:
+        print(
+            f"error: no pricing entry for CLI tier(s): {missing_prices}. "
+            f"Add them to {args.price_table}",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Vertex config is only needed when Vertex tiers are requested.
+    needs_vertex = bool(set(args.tiers) & VERTEX_TIERS)
 
     vertex_config: VertexConfig | None = None
     if needs_vertex:
@@ -289,23 +290,23 @@ def main(argv: list[str] | None = None) -> int:
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
 
-    has_gpt_tiers = any(t.startswith("gpt-") for t in args.tiers)
+    has_cli_tiers = any(t not in VERTEX_TIERS for t in args.tiers)
     cursor_token = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
     usage_client: CursorUsageClient | None = None
     if cursor_token:
-        if has_gpt_tiers and args.workers > 1:
+        if has_cli_tiers and args.workers > 1:
             print(
-                "error: --workers must be 1 when running GPT tiers with "
+                "error: --workers must be 1 when running CLI tiers with "
                 "$CURSOR_SESSION_TOKEN (concurrent runs cause cost "
                 "misattribution between attempts)",
                 file=sys.stderr,
             )
             return 2
         usage_client = CursorUsageClient(cursor_token)
-    elif has_gpt_tiers:
+    elif has_cli_tiers:
         print(
             "warning: $CURSOR_SESSION_TOKEN not set; "
-            "GPT cost tracking will be inaccurate (reasoning tokens excluded)",
+            "CLI tier cost tracking will be inaccurate",
             file=sys.stderr,
         )
     cli_scaffold = CLIScaffold(usage_client=usage_client)
