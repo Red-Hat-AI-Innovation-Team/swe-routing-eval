@@ -45,12 +45,17 @@ from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
 from swe_routing_eval.grading import SubprocessGrader, SwebenchifyGrader
 from swe_routing_eval.ingest import filter_by_year, load
-from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
-from swe_routing_eval.scaffold import Scaffold
+from swe_routing_eval.orchestrator import (
+    BudgetExceeded,
+    GraderCircuitBreaker,
+    Orchestrator,
+    SweepConfig,
+)
+from swe_routing_eval.scaffold import CLIScaffold, Scaffold
 from swe_routing_eval.store import FileStore
 from swe_routing_eval.vertex import ConfigError, Tier, VertexConfig
 
-_VALID_TIERS: set[Tier] = {"opus", "sonnet", "haiku"}
+_ANTHROPIC_TIERS: set[Tier] = {"opus", "sonnet", "haiku"}
 
 
 def _load_price_table(path: Path) -> PriceTable:
@@ -236,9 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # Validate tiers
-    invalid = [t for t in args.tiers if t not in _VALID_TIERS]
+    invalid = [t for t in args.tiers if t not in _ANTHROPIC_TIERS and not t.startswith("gpt-")]
     if invalid:
-        print(f"error: unknown tiers: {invalid}. Valid: {sorted(_VALID_TIERS)}", file=sys.stderr)
+        print(f"error: unknown tiers: {invalid}. Anthropic: {sorted(_ANTHROPIC_TIERS)}, or any gpt-* tier", file=sys.stderr)
         return 2
 
     # Load inputs
@@ -251,12 +256,22 @@ def main(argv: list[str] | None = None) -> int:
 
     price_table = _load_price_table(args.price_table)
 
-    # Vertex config (required even for dry-run to resolve model IDs)
-    try:
-        vertex_config = VertexConfig.from_env()
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+    # Vertex config is only needed when Anthropic tiers are requested.
+    needs_vertex = bool(set(args.tiers) & _ANTHROPIC_TIERS)
+
+    vertex_config: VertexConfig | None = None
+    if needs_vertex:
+        try:
+            vertex_config = VertexConfig.from_env()
+        except ConfigError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+    if vertex_config is None:
+        vertex_config = VertexConfig(
+            project_id="", region="",
+            opus_model_id="", sonnet_model_id="", haiku_model_id="",
+        )
 
     sweep_config = SweepConfig(
         model_tiers=list(args.tiers),  # type: ignore[arg-type]
@@ -267,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
 
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
+    cli_scaffold = CLIScaffold()
     if args.grade_binary:
         grader = SubprocessGrader(binary=args.grade_binary)
     else:
@@ -278,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         grader=grader,
         vertex_config=vertex_config,
         price_table=price_table,
+        cli_scaffold=cli_scaffold,
     )
 
     if args.dry_run:
@@ -300,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
             workspace_cleanup=_workspace_cleanup,
         )
     except BudgetExceeded as exc:
+        print(f"Aborted: {exc}", file=sys.stderr)
+        return 1
+    except GraderCircuitBreaker as exc:
         print(f"Aborted: {exc}", file=sys.stderr)
         return 1
     return 0

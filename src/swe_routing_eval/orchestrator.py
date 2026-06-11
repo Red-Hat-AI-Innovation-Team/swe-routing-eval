@@ -23,7 +23,7 @@ from swe_routing_eval.budget import BudgetConfig, dry_run_estimate
 from swe_routing_eval.cost import PriceTable
 from swe_routing_eval.grading import Grader, GraderError, safe_grade
 from swe_routing_eval.ingest import SWEbenchInstance
-from swe_routing_eval.scaffold import AttemptResult, Scaffold
+from swe_routing_eval.scaffold import AttemptResult, CLIScaffold, Scaffold
 from swe_routing_eval.store import RunRecord, Store
 from swe_routing_eval.vertex import Tier, VertexConfig
 
@@ -51,6 +51,18 @@ class BudgetExceeded(Exception):
         )
 
 
+class GraderCircuitBreaker(Exception):
+    """Raised when consecutive grader errors indicate a systemic failure."""
+
+    def __init__(self, last_error: str, consecutive: int) -> None:
+        self.last_error = last_error
+        self.consecutive = consecutive
+        super().__init__(
+            f"Grader circuit breaker tripped after {consecutive} consecutive "
+            f"grader errors. Last error: {last_error}"
+        )
+
+
 class Orchestrator:
     """Schedules and runs the model×instance×attempt matrix.
 
@@ -68,12 +80,14 @@ class Orchestrator:
         grader: Grader,
         vertex_config: VertexConfig,
         price_table: PriceTable,
+        cli_scaffold: CLIScaffold | None = None,
     ) -> None:
         self._store = store
         self._scaffold = scaffold
         self._grader = grader
         self._vertex_config = vertex_config
         self._price_table = price_table
+        self._cli_scaffold = cli_scaffold
 
     # ------------------------------------------------------------------
     # Budget pre-flight (issue #12)
@@ -90,9 +104,7 @@ class Orchestrator:
         projection: dict[Tier, float] = {}
         for tier in sweep_config.model_tiers:
             model_id = self._vertex_config.model_id(tier)
-            pricing = self._price_table.tiers.get(model_id)
-            if pricing is None:
-                raise KeyError(f"No pricing for model_id {model_id!r}")
+            pricing = self._price_table._lookup(model_id)
             projection[tier] = dry_run_estimate(
                 n_instances=n_instances,
                 k_attempts=sweep_config.k_attempts,
@@ -141,11 +153,14 @@ class Orchestrator:
         avg_tokens_in: int = 450_000,
         avg_tokens_out: int = 7_000,
         workspace_cleanup: Callable[[Path], None] | None = None,
+        grader_circuit_limit: int = 3,
     ) -> None:
         """Run the full model×instance×attempt sweep.
 
         Skips already-completed triples (resume support).
         Warns when running spend reaches budget.warn_at_fraction of the cap.
+        Raises GraderCircuitBreaker after *grader_circuit_limit* consecutive
+        grader errors (default 3), indicating a systemic grader failure.
         """
         self.dry_run(sweep_config, instances, budget, avg_tokens_in, avg_tokens_out)
 
@@ -186,6 +201,8 @@ class Orchestrator:
                 future_to_key[future] = (tier, inst.instance_id, idx)
 
             completed = skipped
+            consecutive_grader_errors = 0
+            last_grader_error = ""
             for future in as_completed(future_to_key):
                 tier, instance_id, idx = future_to_key[future]
                 completed += 1
@@ -199,6 +216,17 @@ class Orchestrator:
                         completed, len(work), tier, instance_id, idx,
                         status, record.cost_usd,
                     )
+                    if record.grader_error:
+                        consecutive_grader_errors += 1
+                        last_grader_error = record.grader_error
+                        if consecutive_grader_errors >= grader_circuit_limit:
+                            for f in future_to_key:
+                                f.cancel()
+                            raise GraderCircuitBreaker(
+                                last_grader_error, consecutive_grader_errors,
+                            )
+                    else:
+                        consecutive_grader_errors = 0
                     if spent_usd >= warn_threshold:
                         logger.warning(
                             "Spend $%.2f has reached %.0f%% of cap $%.2f",
@@ -206,6 +234,8 @@ class Orchestrator:
                             budget.warn_at_fraction * 100,
                             budget.max_spend_usd,
                         )
+                except GraderCircuitBreaker:
+                    raise
                 except Exception:
                     logger.exception(
                         "Attempt (%s, %s, %d) failed", tier, instance_id, idx
@@ -230,7 +260,12 @@ class Orchestrator:
         workspace_dir = workspace_factory(instance, attempt_idx, model_id)
         try:
             t0 = time.monotonic()
-            attempt: AttemptResult = self._scaffold.run(
+            scaffold = (
+                self._cli_scaffold
+                if self._cli_scaffold and model_id.startswith("gpt-")
+                else self._scaffold
+            )
+            attempt: AttemptResult = scaffold.run(
                 instance=instance,
                 workspace_dir=workspace_dir,
                 model_id=model_id,

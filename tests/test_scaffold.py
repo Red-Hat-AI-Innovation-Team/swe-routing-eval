@@ -13,6 +13,7 @@ from swe_routing_eval.scaffold import (
     TOOLS,
     AttemptResult,
     _bash,
+    _run_cli,
     _run_loop,
 )
 from swe_routing_eval.vertex import VertexConfig
@@ -230,3 +231,67 @@ def test_bash_handles_timeout(tmp_path: Path) -> None:
     with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="x", timeout=120)):
         output = _bash("sleep 999", tmp_path)
     assert "timed out" in output
+
+
+# ---------------------------------------------------------------------------
+# _run_cli: CLIScaffold (Cursor agent CLI)
+# ---------------------------------------------------------------------------
+
+
+def test_run_cli_parses_json_result(tmp_path: Path) -> None:
+    json_output = (
+        '{"type":"result","subtype":"success","is_error":false,'
+        '"duration_ms":5000,"result":"done",'
+        '"usage":{"inputTokens":10000,"outputTokens":200}}'
+    )
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            stdout=json_output,
+            stderr="",
+            returncode=0,
+        )
+        with patch("swe_routing_eval.scaffold._git_diff", return_value="diff --git a/f"):
+            result = _run_cli("fix the bug", tmp_path, "gpt-5.4-medium", seed=0)
+
+    assert isinstance(result, AttemptResult)
+    assert result.model_id == "gpt-5.4-medium"
+    assert result.tokens_in == 10000
+    assert result.tokens_out == 200
+    assert result.candidate_patch == "diff --git a/f"
+    assert result.scaffold_version == SCAFFOLD_VERSION
+
+
+def test_run_cli_handles_multiline_output(tmp_path: Path) -> None:
+    stdout = (
+        'some debug output\n'
+        'more output\n'
+        '{"type":"result","usage":{"inputTokens":5000,"outputTokens":100}}'
+    )
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=stdout, stderr="", returncode=0)
+        with patch("swe_routing_eval.scaffold._git_diff", return_value=""):
+            result = _run_cli("prompt", tmp_path, "gpt-5.4-medium", seed=0)
+
+    assert result.tokens_in == 5000
+    assert result.tokens_out == 100
+
+
+def test_run_cli_handles_timeout(tmp_path: Path) -> None:
+    import subprocess
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="agent", timeout=1800)):
+        with patch("swe_routing_eval.scaffold._git_diff", return_value="partial diff"):
+            result = _run_cli("prompt", tmp_path, "gpt-5.4-medium", seed=0)
+
+    assert result.tokens_in == 0
+    assert result.tokens_out == 0
+    assert result.candidate_patch == "partial diff"
+
+
+def test_run_cli_handles_malformed_json(tmp_path: Path) -> None:
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="not json", stderr="", returncode=0)
+        with patch("swe_routing_eval.scaffold._git_diff", return_value=""):
+            result = _run_cli("prompt", tmp_path, "gpt-5.4-medium", seed=0)
+
+    assert result.tokens_in == 0
+    assert result.tokens_out == 0

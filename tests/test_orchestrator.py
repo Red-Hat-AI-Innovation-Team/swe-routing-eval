@@ -11,7 +11,12 @@ from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
 from swe_routing_eval.grading import GraderError, GradeResult
 from swe_routing_eval.ingest import SWEbenchInstance
-from swe_routing_eval.orchestrator import BudgetExceeded, Orchestrator, SweepConfig
+from swe_routing_eval.orchestrator import (
+    BudgetExceeded,
+    GraderCircuitBreaker,
+    Orchestrator,
+    SweepConfig,
+)
 from swe_routing_eval.scaffold import AttemptResult, Scaffold
 from swe_routing_eval.store import FileStore, RunRecord
 from swe_routing_eval.vertex import VertexConfig
@@ -344,3 +349,55 @@ def test_no_cleanup_when_callback_is_none(tmp_path: Path) -> None:
         )
 
     assert len(store.list_all()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Grader circuit breaker
+# ---------------------------------------------------------------------------
+
+
+def test_grader_circuit_breaker_trips_after_consecutive_errors(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+
+    with patch(
+        "swe_routing_eval.orchestrator.safe_grade",
+        side_effect=GraderError("binary not found"),
+    ):
+        orc = _make_orchestrator(store)
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=3, max_workers=1)
+        with pytest.raises(GraderCircuitBreaker) as exc_info:
+            orc.run(
+                cfg, [_instance()], _workspace_factory,
+                BudgetConfig(max_spend_usd=100.0),
+                grader_circuit_limit=3,
+            )
+
+    assert exc_info.value.consecutive == 3
+    assert "binary not found" in exc_info.value.last_error
+    # The 3 sentinel records that triggered the breaker should still be saved
+    assert len(store.list_all()) == 3
+
+
+def test_grader_circuit_breaker_resets_on_success(tmp_path: Path) -> None:
+    store = FileStore(tmp_path / "runs.db")
+
+    call_count = 0
+
+    def _alternating_grader(*args: object, **kwargs: object) -> GradeResult:
+        nonlocal call_count
+        call_count += 1
+        if call_count % 2 == 0:
+            raise GraderError("intermittent failure")
+        return GradeResult(resolved=False, compiled=True)
+
+    with patch("swe_routing_eval.orchestrator.safe_grade", side_effect=_alternating_grader):
+        orc = _make_orchestrator(store)
+        # 4 attempts with limit 3: success, fail, success, fail — never trips
+        cfg = SweepConfig(model_tiers=["opus"], k_attempts=4, max_workers=1)
+        orc.run(
+            cfg, [_instance()], _workspace_factory,
+            BudgetConfig(max_spend_usd=100.0),
+            grader_circuit_limit=3,
+        )
+
+    assert len(store.list_all()) == 4

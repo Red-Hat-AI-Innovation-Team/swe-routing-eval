@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Literal
 
-Tier = Literal["opus", "sonnet", "haiku"]
+Tier = Literal["opus", "sonnet", "haiku", "gpt-5.4-medium"]
 
 _REQUIRED_ENV = {
     "project_id": "ANTHROPIC_VERTEX_PROJECT_ID",
@@ -48,6 +48,8 @@ class VertexConfig:
                 return self.sonnet_model_id
             case "haiku":
                 return self.haiku_model_id
+            case t if t.startswith("gpt-"):
+                return t
 
     @classmethod
     def from_env(cls) -> "VertexConfig":

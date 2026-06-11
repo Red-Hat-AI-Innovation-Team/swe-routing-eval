@@ -14,5 +14,9 @@
   "claude-haiku-4-5@20251001": {
     "input_per_1k_tokens": 0.00025,
     "output_per_1k_tokens": 0.00125
+  },
+  "gpt-*": {
+    "input_per_1k_tokens": 0.0025,
+    "output_per_1k_tokens": 0.015
   }
 }

@@ -28,11 +28,17 @@ class PriceTable:
 
     tiers: dict[str, TierPricing]
 
+    def _lookup(self, model_id: str) -> TierPricing:
+        pricing = self.tiers.get(model_id)
+        if pricing is None and model_id.startswith("gpt-"):
+            pricing = self.tiers.get("gpt-*")
+        if pricing is None:
+            raise KeyError(f"No pricing entry for model_id {model_id!r}")
+        return pricing
+
     def compute_cost(self, record: RunRecord) -> float:
         """Return the USD cost of a single attempt from its telemetry."""
-        pricing = self.tiers.get(record.model_id)
-        if pricing is None:
-            raise KeyError(f"No pricing entry for model_id {record.model_id!r}")
+        pricing = self._lookup(record.model_id)
         return (
             record.tokens_in / 1000 * pricing.input_per_1k_tokens
             + record.tokens_out / 1000 * pricing.output_per_1k_tokens

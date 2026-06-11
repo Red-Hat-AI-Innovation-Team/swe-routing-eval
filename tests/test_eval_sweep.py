@@ -171,7 +171,7 @@ def test_invalid_tier_returns_exit_code_2(
 
     rc = main([
         str(instances_path),
-        "--tiers", "gpt-4",
+        "--tiers", "invalid-tier",
         "--price-table", str(prices_path),
         "--dry-run",
     ])

@@ -5,10 +5,13 @@ Every element that could vary across models is held constant:
 
 The model ID is the only variable. seed is logged for reproducibility but
 is not passed to the API (the Anthropic API has no seed parameter).
+
+CLIScaffold delegates to the Cursor `agent` CLI for non-Anthropic models.
 """
 
 from __future__ import annotations
 
+import json as _json
 import subprocess
 import time
 from dataclasses import dataclass
@@ -236,3 +239,89 @@ def _git_diff(workspace_dir: Path) -> str:
         text=True,
     )
     return proc.stdout
+
+
+_CLI_TIMEOUT_S = 1800
+
+
+class CLIScaffold:
+    """Scaffold that delegates to the Cursor `agent` CLI for non-Anthropic models."""
+
+    def run(
+        self,
+        instance: SWEbenchInstance,
+        workspace_dir: Path,
+        model_id: str,
+        seed: int,
+    ) -> AttemptResult:
+        prompt = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"Repository: {instance.repo}\n\n"
+            f"Problem statement:\n{instance.problem_statement}"
+        )
+        return _run_cli(prompt, workspace_dir, model_id, seed)
+
+
+def _run_cli(
+    prompt: str,
+    workspace_dir: Path,
+    model_id: str,
+    seed: int,
+) -> AttemptResult:
+    """Run the Cursor agent CLI and parse structured JSON output."""
+    start = time.monotonic()
+
+    cmd = [
+        "agent", "-p",
+        "--model", model_id,
+        "--output-format", "json",
+        "--trust", "--yolo",
+        "--workspace", str(workspace_dir),
+        prompt,
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_CLI_TIMEOUT_S,
+        )
+        stdout = proc.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return AttemptResult(
+            candidate_patch=_git_diff(workspace_dir),
+            model_id=model_id,
+            seed=seed,
+            scaffold_version=SCAFFOLD_VERSION,
+            tokens_in=0,
+            tokens_out=0,
+            turns=0,
+            tool_calls=0,
+            wall_clock_s=time.monotonic() - start,
+        )
+
+    tokens_in = tokens_out = 0
+    if stdout:
+        last_line = stdout.rsplit("\n", 1)[-1]
+        try:
+            result = _json.loads(last_line)
+            usage = result.get("usage", {})
+            tokens_in = usage.get("inputTokens", 0)
+            tokens_out = usage.get("outputTokens", 0)
+        except (ValueError, KeyError):
+            pass
+
+    candidate_patch = _git_diff(workspace_dir)
+
+    return AttemptResult(
+        candidate_patch=candidate_patch,
+        model_id=model_id,
+        seed=seed,
+        scaffold_version=SCAFFOLD_VERSION,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        turns=0,
+        tool_calls=0,
+        wall_clock_s=time.monotonic() - start,
+    )
