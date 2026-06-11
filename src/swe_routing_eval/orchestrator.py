@@ -260,11 +260,8 @@ class Orchestrator:
         workspace_dir = workspace_factory(instance, attempt_idx, model_id)
         try:
             t0 = time.monotonic()
-            scaffold = (
-                self._cli_scaffold
-                if self._cli_scaffold and model_id.startswith("gpt-")
-                else self._scaffold
-            )
+            use_cli = bool(self._cli_scaffold and model_id.startswith("gpt-"))
+            scaffold = self._cli_scaffold if use_cli else self._scaffold
             attempt: AttemptResult = scaffold.run(
                 instance=instance,
                 workspace_dir=workspace_dir,
@@ -311,6 +308,7 @@ class Orchestrator:
                 tool_calls=attempt.tool_calls,
                 wall_clock_s=wall_clock_s,
                 grader_error=grader_error,
+                cli_scaffold=use_cli,
             )
             if attempt.cost_cents is not None:
                 record.cost_usd = attempt.cost_cents / 100.0
