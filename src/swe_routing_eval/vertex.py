@@ -50,6 +50,8 @@ class VertexConfig:
                 return self.haiku_model_id
             case t if t.startswith("gpt-"):
                 return t
+            case _:
+                raise ValueError(f"Unknown tier: {tier!r}")
 
     @classmethod
     def from_env(cls) -> "VertexConfig":
