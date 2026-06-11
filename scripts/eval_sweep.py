@@ -70,7 +70,7 @@ def _load_price_table(path: Path) -> PriceTable:
     return PriceTable(tiers=tiers)
 
 
-def _workspace_factory(workspace_root: Path) -> Callable[[object, int], Path]:
+def _workspace_factory(workspace_root: Path) -> Callable[..., Path]:
     """Clone each repo once into a shared cache; derive per-attempt workspaces via git worktree.
 
     Cloning kubernetes or etcd once (~seconds) and then creating lightweight
@@ -243,7 +243,11 @@ def main(argv: list[str] | None = None) -> int:
     # Validate tiers
     invalid = [t for t in args.tiers if t not in _ANTHROPIC_TIERS and not t.startswith("gpt-")]
     if invalid:
-        print(f"error: unknown tiers: {invalid}. Anthropic: {sorted(_ANTHROPIC_TIERS)}, or any gpt-* tier", file=sys.stderr)
+        print(
+            f"error: unknown tiers: {invalid}. "
+            f"Anthropic: {sorted(_ANTHROPIC_TIERS)}, or any gpt-* tier",
+            file=sys.stderr,
+        )
         return 2
 
     # Load inputs
@@ -274,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     sweep_config = SweepConfig(
-        model_tiers=list(args.tiers),  # type: ignore[arg-type]
+        model_tiers=list(args.tiers),
         k_attempts=args.k,
         max_workers=args.workers,
     )
@@ -283,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
     cli_scaffold = CLIScaffold()
+    grader: SubprocessGrader | SwebenchifyGrader
     if args.grade_binary:
         grader = SubprocessGrader(binary=args.grade_binary)
     else:

@@ -64,7 +64,7 @@ def _instance(instance_id: str = "kubectl-1") -> SWEbenchInstance:
         compiled=True,
         n_runs=3,
         quarantined_tests=[],
-        decontam_overlap=False,
+        decontamination_overlap=False,
     )
 
 
