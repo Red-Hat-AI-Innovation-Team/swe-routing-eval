@@ -21,6 +21,7 @@ from typing import Any
 import anthropic
 from anthropic.types import ToolUseBlock
 
+from swe_routing_eval.cursor_usage import CursorUsageClient, sum_events
 from swe_routing_eval.ingest import SWEbenchInstance
 from swe_routing_eval.vertex import VertexConfig
 
@@ -89,6 +90,7 @@ class AttemptResult:
     turns: int
     tool_calls: int
     wall_clock_s: float
+    cost_cents: float | None = None
 
 
 class Scaffold:
@@ -247,6 +249,12 @@ _CLI_TIMEOUT_S = 1800
 class CLIScaffold:
     """Scaffold that delegates to the Cursor `agent` CLI for non-Anthropic models."""
 
+    def __init__(
+        self,
+        usage_client: CursorUsageClient | None = None,
+    ) -> None:
+        self._usage_client = usage_client
+
     def run(
         self,
         instance: SWEbenchInstance,
@@ -259,7 +267,7 @@ class CLIScaffold:
             f"Repository: {instance.repo}\n\n"
             f"Problem statement:\n{instance.problem_statement}"
         )
-        return _run_cli(prompt, workspace_dir, model_id, seed)
+        return _run_cli(prompt, workspace_dir, model_id, seed, self._usage_client)
 
 
 def _run_cli(
@@ -267,9 +275,11 @@ def _run_cli(
     workspace_dir: Path,
     model_id: str,
     seed: int,
+    usage_client: CursorUsageClient | None = None,
 ) -> AttemptResult:
     """Run the Cursor agent CLI and parse structured JSON output."""
     start = time.monotonic()
+    start_ms = int(time.time() * 1000)
 
     cmd = [
         "agent", "-p",
@@ -312,6 +322,18 @@ def _run_cli(
         except (ValueError, KeyError):
             pass
 
+    cost_cents: float | None = None
+    if usage_client is not None:
+        end_ms = int(time.time() * 1000)
+        events = usage_client.get_events()
+        session = sum_events(
+            events, model=model_id, after_ms=start_ms, before_ms=end_ms,
+        )
+        if session.event_count > 0:
+            cost_cents = session.total_cents
+            tokens_in = session.input_tokens
+            tokens_out = session.output_tokens
+
     candidate_patch = _git_diff(workspace_dir)
 
     return AttemptResult(
@@ -324,4 +346,5 @@ def _run_cli(
         turns=0,
         tool_calls=0,
         wall_clock_s=time.monotonic() - start,
+        cost_cents=cost_cents,
     )

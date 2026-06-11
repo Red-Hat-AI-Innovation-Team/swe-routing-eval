@@ -15,7 +15,11 @@
     "input_per_1k_tokens": 0.00025,
     "output_per_1k_tokens": 0.00125
   },
-  "gpt-*": {
+  "gpt-5.3-codex-xhigh": {
+    "input_per_1k_tokens": 0.00175,
+    "output_per_1k_tokens": 0.014
+  },
+  "gpt-5.4-xhigh": {
     "input_per_1k_tokens": 0.0025,
     "output_per_1k_tokens": 0.015
   }

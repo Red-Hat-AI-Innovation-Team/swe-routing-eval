@@ -312,7 +312,10 @@ class Orchestrator:
                 wall_clock_s=wall_clock_s,
                 grader_error=grader_error,
             )
-            record.cost_usd = self._price_table.compute_cost(record)
+            if attempt.cost_cents is not None:
+                record.cost_usd = attempt.cost_cents / 100.0
+            else:
+                record.cost_usd = self._price_table.compute_cost(record)
             return record
         finally:
             if workspace_cleanup is not None:

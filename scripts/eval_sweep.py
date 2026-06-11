@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,7 @@ from pathlib import Path
 
 from swe_routing_eval.budget import BudgetConfig
 from swe_routing_eval.cost import PriceTable, TierPricing
+from swe_routing_eval.cursor_usage import CursorUsageClient
 from swe_routing_eval.grading import SubprocessGrader, SwebenchifyGrader
 from swe_routing_eval.ingest import filter_by_year, load
 from swe_routing_eval.orchestrator import (
@@ -286,7 +288,18 @@ def main(argv: list[str] | None = None) -> int:
 
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
-    cli_scaffold = CLIScaffold()
+
+    cursor_token = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
+    usage_client: CursorUsageClient | None = None
+    if cursor_token:
+        usage_client = CursorUsageClient(cursor_token)
+    elif any(t.startswith("gpt-") for t in args.tiers):
+        print(
+            "warning: $CURSOR_SESSION_TOKEN not set; "
+            "GPT cost tracking will be inaccurate (reasoning tokens excluded)",
+            file=sys.stderr,
+        )
+    cli_scaffold = CLIScaffold(usage_client=usage_client)
     grader: SubprocessGrader | SwebenchifyGrader
     if args.grade_binary:
         grader = SubprocessGrader(binary=args.grade_binary)
