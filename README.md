@@ -63,6 +63,32 @@ export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-6
 export ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-4-5@20251001
 ```
 
+### GPT models via Cursor CLI
+
+GPT models (e.g. `gpt-5.3-codex-xhigh`, `gpt-5.4-xhigh`) run through the
+Cursor `agent` CLI rather than Vertex AI. The CLI doesn't report reasoning
+tokens, so costs for xhigh reasoning runs are undercounted by default.
+
+To get accurate per-attempt costs including reasoning tokens, set a Cursor
+dashboard session token:
+
+```bash
+export CURSOR_SESSION_TOKEN='<WorkosCursorSessionToken cookie value>'
+```
+
+Get this from your browser: open `cursor.com`, DevTools > Application >
+Cookies, copy the `WorkosCursorSessionToken` value. The token is a JWT
+that expires ~60 days from login.
+
+When set, each CLI run queries the Cursor dashboard API for actual billed
+costs (`totalCents`) and overrides the token-based estimate. If unset, a
+warning is printed and costs fall back to CLI-reported usage (which excludes
+reasoning tokens).
+
+**Important:** GPT sweeps must use `--workers 1`. Concurrent runs of the
+same model produce overlapping time windows, causing cost events to be
+misattributed between attempts.
+
 The grader imports `swebenchify.grader.grade` from the SWE-benchify repo.
 Clone it and install it in the same environment:
 

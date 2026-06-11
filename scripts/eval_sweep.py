@@ -289,11 +289,20 @@ def main(argv: list[str] | None = None) -> int:
     store = FileStore(args.store)
     scaffold = Scaffold(vertex_config)
 
+    has_gpt_tiers = any(t.startswith("gpt-") for t in args.tiers)
     cursor_token = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
     usage_client: CursorUsageClient | None = None
     if cursor_token:
+        if has_gpt_tiers and args.workers > 1:
+            print(
+                "error: --workers must be 1 when running GPT tiers with "
+                "$CURSOR_SESSION_TOKEN (concurrent runs cause cost "
+                "misattribution between attempts)",
+                file=sys.stderr,
+            )
+            return 2
         usage_client = CursorUsageClient(cursor_token)
-    elif any(t.startswith("gpt-") for t in args.tiers):
+    elif has_gpt_tiers:
         print(
             "warning: $CURSOR_SESSION_TOKEN not set; "
             "GPT cost tracking will be inaccurate (reasoning tokens excluded)",
