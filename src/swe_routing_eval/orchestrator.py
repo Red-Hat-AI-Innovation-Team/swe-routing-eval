@@ -213,9 +213,9 @@ class Orchestrator:
                     spent_usd += record.cost_usd
                     status = "resolved" if record.resolved else "not resolved"
                     logger.info(
-                        "[%d/%d] %s / %s / attempt %d → %s ($%.4f)",
+                        "[%d/%d] %s / %s / attempt %d → %s ($%.4f, cumulative $%.2f)",
                         completed, len(work), tier, instance_id, idx,
-                        status, record.cost_usd,
+                        status, record.cost_usd, spent_usd,
                     )
                     if record.grader_error:
                         consecutive_grader_errors += 1
@@ -261,6 +261,10 @@ class Orchestrator:
     ) -> RunRecord:
         workspace_dir = workspace_factory(instance, attempt_idx, model_id)
         try:
+            logger.info(
+                "START %s / %s / attempt %d",
+                tier, instance.instance_id, attempt_idx,
+            )
             t0 = time.monotonic()
             scaffold: CLIScaffold | Scaffold
             if self._cli_scaffold is not None and tier not in VERTEX_TIERS:
@@ -276,6 +280,10 @@ class Orchestrator:
                 seed=seed,
             )
             wall_clock_s = time.monotonic() - t0
+            logger.info(
+                "SCAFFOLD done %s / %s / attempt %d in %.0fs, grading …",
+                tier, instance.instance_id, attempt_idx, wall_clock_s,
+            )
 
             assert attempt.model_id == model_id, (
                 f"Scaffold returned model_id={attempt.model_id!r} "

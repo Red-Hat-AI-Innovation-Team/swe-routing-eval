@@ -684,8 +684,8 @@ const MODEL_COLORS = {
   'claude-haiku-4-5@20251001': '#58a6ff',
   'claude-sonnet-4-6': '#2dd4bf',
   'claude-opus-4-6': '#bc8cff',
-  'claude-4.6-sonnet-medium-thinking': '#a78bfa',
-  'claude-4.6-opus-max-thinking': '#c084fc',
+  'claude-4.6-sonnet-medium-thinking': '#2dd4bf',
+  'claude-4.6-opus-max-thinking': '#bc8cff',
   'gpt-5.3-codex-xhigh': '#f97316',
   'gpt-5.4-medium': '#fb923c',
   'gpt-5.4-xhigh': '#f472b6',
@@ -694,19 +694,26 @@ const MODEL_SHORT = {
   'claude-haiku-4-5@20251001': 'Claude Haiku 4.5',
   'claude-sonnet-4-6': 'Claude Sonnet 4.6',
   'claude-opus-4-6': 'Claude Opus 4.6',
-  'claude-4.6-sonnet-medium-thinking': 'Sonnet 4.6 (Cursor)',
-  'claude-4.6-opus-max-thinking': 'Opus 4.6 (Cursor)',
+  'claude-4.6-sonnet-medium-thinking': 'Claude Sonnet 4.6',
+  'claude-4.6-opus-max-thinking': 'Claude Opus 4.6',
   'gpt-5.3-codex-xhigh': 'GPT-5.3 Codex',
   'gpt-5.4-medium': 'GPT-5.4',
   'gpt-5.4-xhigh': 'GPT-5.4',
 };
 
 let DATA = null;
-let filters = { repos: new Set(), languages: new Set(), scaffold: 'Vertex' };
+let filters = { repos: new Set(), languages: new Set(), scaffold: 'API' };
 let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
 
 function shortModel(m) { return MODEL_SHORT[m] || m; }
+function fmtWall(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return (h ? h + 'h' : '') + (h || m ? m + 'm' : '') + sec + 's';
+}
 function tip(text) { return ` <span class="info-tip">i<span class="tip-text">${text}</span></span>`; }
 
 function allRepos() {
@@ -718,17 +725,17 @@ function allLanguages() {
 
 function modelScaffold(model) {
   const runs = DATA.runs[model];
-  if (!runs) return 'Vertex';
+  if (!runs) return 'API';
   for (const instRuns of Object.values(runs)) {
     for (const a of instRuns) {
       if (a.cli) return 'Cursor CLI';
     }
   }
-  return 'Vertex';
+  return 'API';
 }
 
 function allScaffolds() {
-  return [...new Set(DATA.models.map(modelScaffold))].sort().reverse();
+  return [...new Set(DATA.models.map(modelScaffold))].sort();
 }
 
 function filteredModels() {
@@ -790,7 +797,7 @@ function renderFilters() {
   const reset = document.createElement('button');
   reset.className = 'filter-reset';
   reset.textContent = 'Clear filters';
-  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); filters.scaffold = 'Vertex'; renderFilters(); renderAll(); };
+  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); filters.scaffold = 'Cursor CLI'; renderFilters(); renderAll(); };
   bar.appendChild(reset);
 
   const summary = document.createElement('span');
@@ -886,6 +893,7 @@ function renderSummaryCards() {
     const medianTurns = turnsList.length ? turnsList[Math.floor(turnsList.length / 2)] : 0;
 
     const color = MODEL_COLORS[model] || '#58a6ff';
+    const isCLI = modelScaffold(model) === 'Cursor CLI';
     const card = document.createElement('div');
     card.className = 'summary-card';
     card.innerHTML = `
@@ -908,13 +916,13 @@ function renderSummaryCards() {
           <div class="metric-label">Compile rate (Go)${tip('Fraction of Go attempts where the candidate patch compiled successfully. Excludes non-Go repos which use a different grading pipeline.')}</div>
         </div>
         <div class="metric-item">
-          <div class="metric-value">${medianWall.toFixed(0)}s</div>
+          <div class="metric-value">${fmtWall(medianWall)}</div>
           <div class="metric-label">Median wall-clock${tip('Median end-to-end time per attempt, including model inference and tool execution.')}</div>
         </div>
-        <div class="metric-item">
+        ${isCLI ? '' : `<div class="metric-item">
           <div class="metric-value">${medianTurns}</div>
           <div class="metric-label">Median turns${tip('Median number of agentic turns (model responses) per attempt.')}</div>
-        </div>
+        </div>`}
         <div class="metric-item">
           <div class="metric-value">${nInstances}</div>
           <div class="metric-label">Instances evaluated${tip('Number of unique problem instances this model has been evaluated on in the current filter.')}</div>
@@ -1106,7 +1114,10 @@ function renderTable() {
       } else {
         const pct = (s.rate * 100).toFixed(1);
         const cls = s.rate === 1 ? 'cell-resolved' : s.rate > 0 ? 'cell-partial' : 'cell-failed';
-        cells.push(`<td class="cell-model ${cls}" data-instance="${row.id}" data-model="${m}">${s.resolved}/${s.total} (${pct}%)</td>`);
+        const runs = DATA.runs[m][row.id];
+        const avgCost = (runs.reduce((sum, a) => sum + a.cost, 0) / runs.length).toFixed(2);
+        const avgWall = runs.reduce((sum, a) => sum + a.wall, 0) / runs.length;
+        cells.push(`<td class="cell-model ${cls}" data-instance="${row.id}" data-model="${m}" title="Avg cost: $${avgCost} | Avg wall-clock: ${fmtWall(avgWall)}">${s.resolved}/${s.total} (${pct}%)</td>`);
       }
     });
     return `<tr>${cells.join('')}</tr>`;
@@ -1162,7 +1173,7 @@ function renderDetailAttempt(attemptIndex) {
         <div class="stat-label">Cost</div>
       </div>
       <div class="attempt-stat">
-        <div class="stat-value">${run.wall.toFixed(0)}s</div>
+        <div class="stat-value">${fmtWall(run.wall)}</div>
         <div class="stat-label">Wall clock</div>
       </div>
       <div class="attempt-stat">
@@ -1334,87 +1345,60 @@ function connorPower(pDiscordant, delta, alpha = 0.05, power = 0.80) {
 let h2hMode = 'pass1';
 
 const H2H_PAIRS = [
-  { models: ['claude-opus-4-6', 'claude-sonnet-4-6'], scaffold: 'Vertex' },
-  { models: ['gpt-5.4-xhigh', 'gpt-5.3-codex-xhigh'], scaffold: 'Cursor CLI' },
+  { models: ['claude-opus-4-6', 'claude-sonnet-4-6'], scaffold: 'API' },
+  { models: ['claude-4.6-opus-max-thinking', 'gpt-5.4-xhigh'], scaffold: 'API' },
+  { models: ['claude-4.6-opus-max-thinking', 'claude-4.6-sonnet-medium-thinking'], scaffold: 'API' },
+  { models: ['gpt-5.4-xhigh', 'gpt-5.3-codex-xhigh'], scaffold: 'API' },
 ];
 
-function renderH2H() {
-  const section = document.getElementById('h2h-section');
-  const body = document.getElementById('h2h-body');
-  const models = filteredModels();
-  const pair = H2H_PAIRS.find(p => p.models.every(m => models.includes(m)));
-  if (!pair) {
-    section.style.display = 'none';
-    return;
-  }
-  section.style.display = '';
+function renderH2HPair(pair, ids) {
   const [modelA, modelB] = pair.models;
   const labelA = shortModel(modelA);
   const labelB = shortModel(modelB);
-  const titleEl = document.getElementById('h2h-title');
-  const toggleHTML = `<span class="h2h-toggle"><button data-mode="pass1"${h2hMode === 'pass1' ? ' class="active"' : ''}>pass@1</button><button data-mode="pass3"${h2hMode === 'pass3' ? ' class="active"' : ''}>pass@3</button></span>`;
-  titleEl.innerHTML = `Head-to-Head: ${labelA} vs ${labelB} ${toggleHTML}`;
-  titleEl.querySelector('.h2h-toggle').addEventListener('click', e => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    h2hMode = btn.dataset.mode;
-    titleEl.querySelectorAll('.h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
-    renderH2H();
-  });
-  const ids = filteredInstanceIds();
-  const opusRuns = DATA.runs[modelA] || {};
-  const sonnetRuns = DATA.runs[modelB] || {};
 
-  const sharedIds = ids.filter(id => opusRuns[id] && sonnetRuns[id]);
+  const aRuns = DATA.runs[modelA] || {};
+  const bRuns = DATA.runs[modelB] || {};
+  const sharedIds = ids.filter(id => aRuns[id] && bRuns[id]);
 
   if (sharedIds.length === 0) {
-    body.innerHTML = `<div class="h2h-empty">No instances with both ${labelA} and ${labelB} results in the current filter.</div>`;
-    return;
+    return `<div class="h2h-empty">No instances with both ${labelA} and ${labelB} results in the current filter.</div>`;
   }
 
-  const opusResolved = [], sonnetResolved = [];
-  let opusTotalCost = 0, sonnetTotalCost = 0;
-  let opusTotalWall = 0, sonnetTotalWall = 0;
-  let opusTotalAttempts = 0, sonnetTotalAttempts = 0;
+  const aResolved = [], bResolved = [];
+  let aTotalCost = 0, bTotalCost = 0;
+  let aTotalWall = 0, bTotalWall = 0;
+  let aTotalAttempts = 0, bTotalAttempts = 0;
 
   sharedIds.forEach(id => {
-    const oRuns = opusRuns[id];
-    const sRuns = sonnetRuns[id];
+    const ar = aRuns[id];
+    const br = bRuns[id];
     if (h2hMode === 'pass3') {
-      opusResolved.push(oRuns.some(a => a.r));
-      sonnetResolved.push(sRuns.some(a => a.r));
+      aResolved.push(ar.some(a => a.r));
+      bResolved.push(br.some(a => a.r));
     } else {
-      const k = Math.min(oRuns.length, sRuns.length);
+      const k = Math.min(ar.length, br.length);
       for (let i = 0; i < k; i++) {
-        opusResolved.push(!!oRuns[i].r);
-        sonnetResolved.push(!!sRuns[i].r);
+        aResolved.push(!!ar[i].r);
+        bResolved.push(!!br[i].r);
       }
     }
-    oRuns.forEach(a => { opusTotalCost += a.cost; opusTotalWall += a.wall; });
-    sRuns.forEach(a => { sonnetTotalCost += a.cost; sonnetTotalWall += a.wall; });
-    opusTotalAttempts += oRuns.length;
-    sonnetTotalAttempts += sRuns.length;
+    ar.forEach(a => { aTotalCost += a.cost; aTotalWall += a.wall; });
+    br.forEach(a => { bTotalCost += a.cost; bTotalWall += a.wall; });
+    aTotalAttempts += ar.length;
+    bTotalAttempts += br.length;
   });
 
-  const opusResolvedCount = opusResolved.filter(Boolean).length;
-  const sonnetResolvedCount = sonnetResolved.filter(Boolean).length;
-  const nPairs = opusResolved.length;
-  const opusSolveRate = nPairs ? opusResolvedCount / nPairs : 0;
-  const sonnetSolveRate = nPairs ? sonnetResolvedCount / nPairs : 0;
-  const opusAvgCost = h2hMode === 'pass3'
-    ? opusTotalCost / sharedIds.length
-    : opusTotalCost / opusTotalAttempts;
-  const sonnetAvgCost = h2hMode === 'pass3'
-    ? sonnetTotalCost / sharedIds.length
-    : sonnetTotalCost / sonnetTotalAttempts;
-  const opusAvgWall = h2hMode === 'pass3'
-    ? opusTotalWall / sharedIds.length
-    : opusTotalWall / opusTotalAttempts;
-  const sonnetAvgWall = h2hMode === 'pass3'
-    ? sonnetTotalWall / sharedIds.length
-    : sonnetTotalWall / sonnetTotalAttempts;
+  const aCount = aResolved.filter(Boolean).length;
+  const bCount = bResolved.filter(Boolean).length;
+  const nPairs = aResolved.length;
+  const aRate = nPairs ? aCount / nPairs : 0;
+  const bRate = nPairs ? bCount / nPairs : 0;
+  const aAvgCost = h2hMode === 'pass3' ? aTotalCost / sharedIds.length : aTotalCost / aTotalAttempts;
+  const bAvgCost = h2hMode === 'pass3' ? bTotalCost / sharedIds.length : bTotalCost / bTotalAttempts;
+  const aAvgWall = h2hMode === 'pass3' ? aTotalWall / sharedIds.length : aTotalWall / aTotalAttempts;
+  const bAvgWall = h2hMode === 'pass3' ? bTotalWall / sharedIds.length : bTotalWall / bTotalAttempts;
 
-  const { statistic, pValue, b, c } = mcnemar(opusResolved, sonnetResolved);
+  const { statistic, pValue, b, c } = mcnemar(aResolved, bResolved);
   const pDisc = nPairs ? (b + c) / nPairs : 0;
   const delta = 0.10;
 
@@ -1430,63 +1414,64 @@ function renderH2H() {
   const isSignificant = pValue < 0.05;
   const hasPower = requiredN !== null && nPairs >= requiredN;
   const poweredNoSignal = hasPower && !isSignificant;
-  const opusColor = MODEL_COLORS[modelA] || '#58a6ff';
-  const sonnetColor = MODEL_COLORS[modelB] || '#58a6ff';
+  const aColor = MODEL_COLORS[modelA] || '#58a6ff';
+  const bColor = MODEL_COLORS[modelB] || '#58a6ff';
 
-  const opusBarW = (opusSolveRate * 100).toFixed(1);
-  const sonnetBarW = (sonnetSolveRate * 100).toFixed(1);
+  const aBarW = (aRate * 100).toFixed(1);
+  const bBarW = (bRate * 100).toFixed(1);
 
   const pLabel = pValue < 0.001 ? 'p < 0.001' : pValue < 0.01 ? `p = ${pValue.toFixed(3)}` : `p = ${pValue.toFixed(2)}`;
   const sigClass = pValue < 0.05 ? 'h2h-powered' : 'h2h-underpowered';
 
-  function fmtDelta(opusVal, sonnetVal, higherBetter) {
-    if (!sonnetVal) return '';
-    const pct = ((opusVal - sonnetVal) / sonnetVal) * 100;
+  function fmtDelta(valA, valB, higherBetter) {
+    if (!valB) return '';
+    const pct = ((valA - valB) / valB) * 100;
     const sign = pct >= 0 ? '+' : '';
     const cls = pct === 0 ? 'neutral' : ((pct > 0) === higherBetter ? 'better' : 'worse');
     return `<span class="h2h-delta ${cls}">(${sign}${pct.toFixed(0)}%)</span>`;
   }
 
-  const solveDelta = fmtDelta(opusSolveRate, sonnetSolveRate, true);
-  const costDelta = fmtDelta(opusAvgCost, sonnetAvgCost, false);
-  const wallDelta = fmtDelta(opusAvgWall, sonnetAvgWall, false);
+  const solveDelta = fmtDelta(aRate, bRate, true);
+  const costDelta = fmtDelta(aAvgCost, bAvgCost, false);
+  const wallDelta = fmtDelta(aAvgWall, bAvgWall, false);
 
-  body.innerHTML = `
+  return `
+    <h3 style="font-size:14px; font-weight:600; margin-bottom:14px; color:var(--text-secondary);">${labelA} vs ${labelB}</h3>
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
       <div>
         <div style="font-size:13px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:12px;">
           Resolution Rate (${h2hMode === 'pass3' ? 'instance-level, any attempt' : 'per attempt'})
         </div>
         <div class="h2h-bar-row">
-          <div class="h2h-bar-label" style="color:${opusColor}">${labelA}</div>
+          <div class="h2h-bar-label" style="color:${aColor}">${labelA}</div>
           <div class="h2h-bar-track">
-            <div class="h2h-bar-fill" style="width:${opusBarW}%; background:${opusColor};">${(opusSolveRate*100).toFixed(1)}%</div>
+            <div class="h2h-bar-fill" style="width:${aBarW}%; background:${aColor};">${(aRate*100).toFixed(1)}%</div>
           </div>
-          <div class="h2h-bar-value">${opusResolvedCount}/${nPairs} ${solveDelta}</div>
+          <div class="h2h-bar-value">${aCount}/${nPairs} ${solveDelta}</div>
         </div>
         <div class="h2h-bar-row">
-          <div class="h2h-bar-label" style="color:${sonnetColor}">${labelB}</div>
+          <div class="h2h-bar-label" style="color:${bColor}">${labelB}</div>
           <div class="h2h-bar-track">
-            <div class="h2h-bar-fill" style="width:${sonnetBarW}%; background:${sonnetColor};">${(sonnetSolveRate*100).toFixed(1)}%</div>
+            <div class="h2h-bar-fill" style="width:${bBarW}%; background:${bColor};">${(bRate*100).toFixed(1)}%</div>
           </div>
-          <div class="h2h-bar-value">${sonnetResolvedCount}/${nPairs}</div>
+          <div class="h2h-bar-value">${bCount}/${nPairs}</div>
         </div>
       </div>
       <div class="h2h-grid" style="grid-template-columns: 1fr 1fr;">
         <div class="h2h-stat">
-          <div class="stat-value" style="color:${opusColor}">$${opusAvgCost.toFixed(2)} ${costDelta}</div>
+          <div class="stat-value" style="color:${aColor}">$${aAvgCost.toFixed(2)} ${costDelta}</div>
           <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
-          <div class="stat-value" style="color:${sonnetColor}">$${sonnetAvgCost.toFixed(2)}</div>
+          <div class="stat-value" style="color:${bColor}">$${bAvgCost.toFixed(2)}</div>
           <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
-          <div class="stat-value" style="color:${opusColor}">${opusAvgWall.toFixed(0)}s ${wallDelta}</div>
+          <div class="stat-value" style="color:${aColor}">${fmtWall(aAvgWall)} ${wallDelta}</div>
           <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
         <div class="h2h-stat">
-          <div class="stat-value" style="color:${sonnetColor}">${sonnetAvgWall.toFixed(0)}s</div>
+          <div class="stat-value" style="color:${bColor}">${fmtWall(bAvgWall)}</div>
           <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
       </div>
@@ -1512,6 +1497,33 @@ function renderH2H() {
       </div>
     </div>
   `;
+}
+
+function renderH2H() {
+  const section = document.getElementById('h2h-section');
+  const body = document.getElementById('h2h-body');
+  const models = filteredModels();
+  const matchingPairs = H2H_PAIRS.filter(p => p.models.every(m => models.includes(m)));
+  if (matchingPairs.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  const titleEl = document.getElementById('h2h-title');
+  const toggleHTML = `<span class="h2h-toggle"><button data-mode="pass1"${h2hMode === 'pass1' ? ' class="active"' : ''}>pass@1</button><button data-mode="pass3"${h2hMode === 'pass3' ? ' class="active"' : ''}>pass@3</button></span>`;
+  titleEl.innerHTML = `Head-to-Head ${toggleHTML}`;
+  titleEl.querySelector('.h2h-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    h2hMode = btn.dataset.mode;
+    titleEl.querySelectorAll('.h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+    renderH2H();
+  });
+  const ids = filteredInstanceIds();
+  body.innerHTML = matchingPairs.map((pair, i) =>
+    (i > 0 ? '<hr style="border:none; border-top:1px solid var(--border); margin:24px 0;">' : '') +
+    renderH2HPair(pair, ids)
+  ).join('');
 }
 
 function renderIntro() {
