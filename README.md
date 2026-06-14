@@ -37,6 +37,7 @@ Emit JSONL instances     Build Pareto frontier + output memo + plot
 | `scripts/analyze_runs.py` | Produce frontier, memo, and plot from a completed run store |
 | `scripts/watch_sweep.py` | Live progress display while a sweep is running |
 | `scripts/export_dashboard_data.py` | Export `runs.db` + instances to `docs/data.json` for the dashboard |
+| `scripts/regrade.py` | Re-grade stored patches against current Docker images |
 | `docs/index.html` | Static GitHub Pages dashboard (Plotly.js, vanilla JS) |
 | `config/prices.json` | Vertex pricing at RH committed-use rates |
 
@@ -186,7 +187,41 @@ Key flags:
 - `--power` — target power for Connor sample-size formula (default 0.80)
 - `--no-plot` — skip matplotlib if not installed
 
-### 5. Dashboard
+### 5. Re-grade existing runs
+
+Re-run the grading pipeline on stored patches without re-running inference.
+Useful when grading failed due to Docker issues, missing images, or
+environment problems at the time of the original run.
+
+```bash
+# Preview which runs will be regraded (no changes)
+python3 scripts/regrade.py --dry-run \
+    --where "instance_id LIKE '%hypershift%' AND cli_scaffold = 1"
+
+# Re-grade all non-compiled CLI runs
+python3 scripts/regrade.py --workers 4 \
+    --where "compiled = 0 AND cli_scaffold = 1"
+
+# Re-grade a specific model
+python3 scripts/regrade.py --workers 4 \
+    --where "model_id = 'claude-4.6-opus-max-thinking' AND compiled = 0"
+```
+
+The `--where` flag accepts any valid SQL WHERE clause against the `runs`
+table. The script backs up the database to `runs.db.bak-regrade` before
+writing (skip with `--no-backup`).
+
+**Prerequisites:** Docker must be running and healthy (`docker image ls`
+should succeed without errors). The grading images must be pullable — if
+`docker image ls` shows I/O errors, restart Docker Desktop first.
+
+After regrading, regenerate the dashboard data:
+
+```bash
+python3 scripts/export_dashboard_data.py
+```
+
+### 6. Dashboard
 
 A static dashboard served via GitHub Pages. Regenerate the data file
 after new runs and commit it:

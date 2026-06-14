@@ -199,6 +199,8 @@ def _run_loop(
             # No tool use and not end_turn — stop gracefully
             candidate_patch = _git_diff(workspace_dir)
             break
+    else:
+        candidate_patch = _git_diff(workspace_dir)
 
     return AttemptResult(
         candidate_patch=candidate_patch,
