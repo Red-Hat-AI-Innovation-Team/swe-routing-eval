@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Methodology &amp; Limitations — Red Hat SWE-bench Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-yellow: #d29922;
+  --accent-purple: #bc8cff;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.container { max-width: 860px; margin: 0 auto; padding: 24px; }
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.header h1 { font-size: 24px; font-weight: 600; }
+.header a {
+  font-size: 14px;
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+.header a:hover { text-decoration: underline; }
+
+.prose { color: var(--text-secondary); font-size: 15px; }
+.prose h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 40px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.prose h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 28px 0 10px;
+}
+.prose p { margin-bottom: 14px; }
+.prose strong { color: var(--text-primary); }
+.prose a { color: var(--accent-blue); text-decoration: none; }
+.prose a:hover { text-decoration: underline; }
+.prose ul, .prose ol { margin: 0 0 14px 24px; }
+.prose li { margin-bottom: 6px; }
+.prose code {
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+.prose pre {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+.callout {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-yellow);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+}
+.callout strong { color: var(--accent-yellow); }
+
+.example-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 20px 0;
+  overflow: hidden;
+}
+.example-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+.example-header .model-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.example-header .outcome {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+.outcome-fail { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+.outcome-pass { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+.example-header .file-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+.diff-container {
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+.diff-file-header {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.diff-file-header:first-child { border-top: none; }
+.diff-hunk {
+  padding: 2px 12px;
+  background: rgba(56,139,253,0.08);
+  color: var(--accent-blue);
+  font-style: italic;
+}
+.diff-line {
+  padding: 0 12px;
+  white-space: pre;
+  min-height: 20px;
+  display: flex;
+}
+.diff-line .ln {
+  display: inline-block;
+  width: 42px;
+  flex-shrink: 0;
+  text-align: right;
+  padding-right: 12px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  user-select: none;
+}
+.diff-add { background: rgba(63,185,80,0.12); color: #aff5b4; }
+.diff-del { background: rgba(248,81,73,0.12); color: #ffa198; }
+.diff-ctx { color: var(--text-secondary); }
+.diff-collapsed {
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  text-align: center;
+}
+.example-annotation {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  line-height: 1.5;
+}
+.example-annotation strong { color: var(--text-primary); }
+
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .header { flex-direction: column; gap: 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Methodology &amp; Limitations</h1>
+    <a href="index.html">&larr; Back to Dashboard</a>
+  </div>
+
+  <div class="prose">
+
+    <h2>Methodology</h2>
+
+    <h3>Instance Sourcing</h3>
+    <p>
+      Evaluation instances are mined from recent pull requests in Red Hat's open-source
+      ecosystem using <a href="https://github.com/Red-Hat-AI-Innovation-Team/SWE-benchify" target="_blank" rel="noopener">SWE-benchify</a>,
+      which produces <a href="https://arxiv.org/abs/2504.02605" target="_blank" rel="noopener">Multi-SWE-bench</a>-format
+      instances from any Git repository with a test suite. Each instance consists of a
+      bug-describing problem statement, a repository snapshot at the buggy commit, and a
+      canonical test patch that exposes the bug.
+    </p>
+    <p>
+      The current instance set draws from Go repositories including
+      Kubernetes, gRPC-Go, etcd, Podman, and others. Instances are selected based on the
+      availability of a clean fail-to-pass test signal: at least one test must fail on the
+      buggy commit and pass after the canonical fix.
+    </p>
+
+    <h3>Scaffold Design</h3>
+    <p>
+      Every model receives the same fixed system prompt instructing it to act as an expert
+      Go software engineer. The prompt specifies a workflow (explore the repo, make targeted
+      edits, verify compilation, call <code>finish</code>) and rules (do not modify test files,
+      keep the fix minimal, do not add new external dependencies).
+    </p>
+    <p>
+      Models are evaluated through two scaffold paths depending on the model provider:
+    </p>
+    <ul>
+      <li>
+        <strong>Vertex API scaffold</strong> (Anthropic models via Vertex Model Garden):
+        The system prompt is passed as the API's <code>system</code> parameter with
+        exactly two tools available: <code>bash</code> (run a shell command, 120-second
+        timeout, 8K char output limit) and <code>finish</code> (submit the patch via
+        <code>git diff HEAD</code>). The agent loop runs for up to 30 turns with a
+        4,096-token max per response.
+      </li>
+      <li>
+        <strong>Cursor CLI scaffold</strong> (GPT-series and some Anthropic model tiers):
+        The Cursor <code>agent</code> CLI is invoked with <code>--trust --yolo</code> mode.
+        The system prompt is <strong>concatenated into the user message</strong>, not passed
+        as a system-level instruction. Cursor's agent uses its own built-in system prompt,
+        its own richer toolset (file editing, code search, terminal, etc.), and has no
+        explicit turn limit — only a 30-minute timeout.
+      </li>
+    </ul>
+    <p>
+      The scaffold version, system prompt text, and tool definitions are pinned constants
+      to ensure model comparisons are not confounded by harness variation. However, the two
+      scaffold paths are fundamentally different environments (see Limitations).
+    </p>
+
+    <h3>Grading Pipeline</h3>
+    <p>
+      Grading is fully automated and Docker-isolated. For each attempt:
+    </p>
+    <ol>
+      <li>
+        <strong>Test-file rejection:</strong> If the candidate patch touches any
+        <code>*_test.go</code> file or <code>testdata/</code> directory, the attempt is
+        marked as <code>rejected_test_edit</code> and scored as not resolved. This prevents
+        reward-hacking by modifying the test assertions directly.
+      </li>
+      <li>
+        <strong>Patch application:</strong> The candidate patch is applied to a fresh
+        checkout at the base commit, then the canonical test patch is applied on top.
+        Tests run against the canonical test surface, not any modifications the candidate
+        might make to test infrastructure.
+      </li>
+      <li>
+        <strong>Compilation check:</strong> The patched repository must compile with
+        <code>go build ./...</code>. Compilation failure results in
+        <code>compiled = false</code> and automatic failure.
+      </li>
+      <li>
+        <strong>Test execution:</strong> The test suite runs with a 600-second timeout.
+        Results are split into fail-to-pass (F2P) tests that must now pass and pass-to-pass
+        (P2P) tests that must continue passing.
+      </li>
+      <li>
+        <strong>Quarantine filtering:</strong> Known flaky or environment-dependent tests
+        are quarantined and excluded from scoring. For etcd specifically, F2P is restricted
+        to unit-test packages (integration and e2e tests are excluded).
+      </li>
+    </ol>
+    <p>
+      An attempt is scored as <strong>resolved</strong> if and only if: the patch compiles,
+      all F2P tests pass, and all P2P tests pass.
+    </p>
+
+    <h3>Metrics</h3>
+    <ul>
+      <li>
+        <strong>pass@1:</strong> The fraction of individual attempts that fully resolve the
+        issue. Each model runs 3 attempts (k=3) per instance with different seeds; pass@1
+        treats each attempt independently.
+      </li>
+      <li>
+        <strong>pass@3:</strong> The fraction of instances where at least one of the 3
+        attempts resolves the issue. This captures whether a model <em>can</em> solve a
+        problem given multiple tries.
+      </li>
+      <li>
+        <strong>Cost per resolve:</strong> Total API/CLI spend divided by the number of
+        resolved attempts (pass@1) or resolved instances (pass@3).
+      </li>
+      <li>
+        <strong>Compile rate:</strong> Fraction of Go attempts where the candidate patch
+        compiles successfully.
+      </li>
+    </ul>
+
+    <h3>Statistical Comparisons</h3>
+    <p>
+      Head-to-head model comparisons use
+      <strong>McNemar's test</strong> (with continuity correction) on paired observations.
+      In pass@1 mode, each attempt index on each shared instance forms a pair; in pass@3
+      mode, each shared instance is one observation. This paired design controls for
+      instance difficulty.
+    </p>
+    <p>
+      Required sample sizes are computed using the
+      <strong>Connor (1987)</strong> formula for McNemar's test, targeting 80% power to
+      detect a 10-percentage-point difference. The dashboard reports whether the current
+      instance count meets this threshold.
+    </p>
+
+    <h2>Limitations</h2>
+
+    <h3>Scaffold Confound</h3>
+    <div class="callout">
+      <strong>Key limitation:</strong> The two scaffold paths create a significant
+      confound that makes cross-scaffold model comparisons unreliable.
+    </div>
+    <p>
+      When models run through the Cursor CLI scaffold, the eval's system prompt — including
+      the critical instruction "Keep the fix minimal — change only what is necessary" — is
+      demoted from a system-level instruction to part of the user message. Cursor's agent
+      has its own system prompt and richer tool environment that may encourage more ambitious,
+      multi-file refactors over minimal targeted fixes.
+    </p>
+    <p>
+      Empirically, we observe that Claude models through Cursor CLI tend to produce larger
+      patches that change function signatures or make breaking API changes requiring updates
+      to all callers. When they miss callers in large codebases (Kubernetes, gRPC-Go), the
+      patch fails to compile. The same models through the Vertex API scaffold — where the
+      "keep it minimal" instruction has system-level authority — produce smaller,
+      backwards-compatible patches that compile more often.
+    </p>
+    <p>
+      The following example from <code>kubernetes/kubernetes#136949</code> illustrates this
+      pattern. Both models attempt the same bug: <code>UpdateNoErrors</code> silently
+      clears managed fields on failure, causing data loss.
+    </p>
+
+    <div class="example-box">
+      <div class="example-header">
+        <span class="model-label" style="color: var(--accent-purple);">Claude Opus 4.6</span>
+        <span class="outcome outcome-fail">Does not compile</span>
+        <span class="file-count">4 files changed</span>
+      </div>
+      <div class="diff-container">
+        <div class="diff-file-header">staging/src/k8s.io/apimachinery/pkg/util/managedfields/internal/fieldmanager.go</div>
+        <div class="diff-hunk">@@ -142,7 +142,7 @@ func (f *FieldManager) Update(...)</div>
+        <div class="diff-line diff-ctx"><span class="ln">142</span> // UpdateNoErrors is the same as Update, but it will not return</div>
+        <div class="diff-line diff-ctx"><span class="ln">143</span> // errors. If an error happens, the object is returned with</div>
+        <div class="diff-line diff-ctx"><span class="ln">144</span> // managedFields cleared.</div>
+        <div class="diff-line diff-del"><span class="ln">145</span>-func (f *FieldManager) UpdateNoErrors(liveObj, newObj runtime.Object, manager string) runtime.Object {</div>
+        <div class="diff-line diff-add"><span class="ln">145</span>+func (f *FieldManager) UpdateNoErrors(liveObj, newObj runtime.Object, manager string) (runtime.Object, error) {</div>
+        <div class="diff-hunk">@@ -155,12 +155,9 @@</div>
+        <div class="diff-line diff-del"><span class="ln">158</span>-		RemoveObjectManagedFields(newObj)</div>
+        <div class="diff-line diff-del"><span class="ln">159</span>-		return newObj</div>
+        <div class="diff-line diff-add"><span class="ln">158</span>+		return nil, err</div>
+        <div class="diff-line diff-ctx"><span class="ln">159</span> 	}</div>
+        <div class="diff-line diff-del"><span class="ln">160</span>-	return obj</div>
+        <div class="diff-line diff-add"><span class="ln">160</span>+	return obj, nil</div>
+        <div class="diff-line diff-ctx"><span class="ln">161</span> }</div>
+
+        <div class="diff-file-header">staging/src/k8s.io/apiserver/pkg/endpoints/handlers/create.go</div>
+        <div class="diff-hunk">@@ -196,7 +196,10 @@ func createHandler(...)</div>
+        <div class="diff-line diff-del"><span class="ln">199</span>-			obj = scope.FieldManager.UpdateNoErrors(liveObj, obj, managerOrUserAgent(...))</div>
+        <div class="diff-line diff-add"><span class="ln">199</span>+			obj, err = scope.FieldManager.UpdateNoErrors(liveObj, obj, managerOrUserAgent(...))</div>
+        <div class="diff-line diff-add"><span class="ln">200</span>+			if err != nil {</div>
+        <div class="diff-line diff-add"><span class="ln">201</span>+				return nil, err</div>
+        <div class="diff-line diff-add"><span class="ln">202</span>+			}</div>
+
+        <div class="diff-file-header">staging/src/k8s.io/apiserver/pkg/endpoints/handlers/patch.go</div>
+        <div class="diff-hunk">@@ -369,7 +369,10 @@ (jsonPatcher).applyPatchToCurrentObject</div>
+        <div class="diff-line diff-del"><span class="ln">372</span>-	objToUpdate = p.fieldManager.UpdateNoErrors(currentObject, objToUpdate, ...)</div>
+        <div class="diff-line diff-add"><span class="ln">372</span>+	objToUpdate, err = p.fieldManager.UpdateNoErrors(currentObject, objToUpdate, ...)</div>
+        <div class="diff-line diff-add"><span class="ln">373</span>+	if err != nil {</div>
+        <div class="diff-line diff-add"><span class="ln">374</span>+		return nil, err</div>
+        <div class="diff-line diff-add"><span class="ln">375</span>+	}</div>
+        <div class="diff-collapsed">... and 1 more call site updated in patch.go and update.go</div>
+
+        <div class="diff-file-header">staging/src/k8s.io/apiserver/pkg/endpoints/handlers/update.go</div>
+        <div class="diff-hunk">@@ -161,7 +161,7 @@ func UpdateResource(...)</div>
+        <div class="diff-line diff-del"><span class="ln">164</span>-				return scope.FieldManager.UpdateNoErrors(liveObj, newObj, ...), nil</div>
+        <div class="diff-line diff-add"><span class="ln">164</span>+				return scope.FieldManager.UpdateNoErrors(liveObj, newObj, ...)</div>
+      </div>
+      <div class="example-annotation">
+        <strong>What happened:</strong> Opus changed the <code>UpdateNoErrors</code> return
+        type from <code>runtime.Object</code> to <code>(runtime.Object, error)</code> — a
+        breaking API change. It found and updated 4 call sites across 3 handler files, but
+        the Kubernetes codebase has additional callers (e.g. in apply.go, fieldmanager tests,
+        and downstream consumers) that were not updated. The result: <code>go build ./...</code> fails.
+      </div>
+    </div>
+
+    <div class="example-box">
+      <div class="example-header">
+        <span class="model-label" style="color: var(--accent-purple);">GPT-5.4</span>
+        <span class="outcome outcome-pass">Compiles &amp; resolves</span>
+        <span class="file-count">1 file changed</span>
+      </div>
+      <div class="diff-container">
+        <div class="diff-file-header">staging/src/k8s.io/apimachinery/pkg/util/managedfields/internal/fieldmanager.go</div>
+        <div class="diff-hunk">@@ -140,24 +140,27 @@ func (f *FieldManager) Update(...)</div>
+        <div class="diff-line diff-ctx"><span class="ln">142</span> // UpdateNoErrors is the same as Update, but it will not return</div>
+        <div class="diff-line diff-del"><span class="ln">143</span>-// errors. If an error happens, the object is returned with</div>
+        <div class="diff-line diff-del"><span class="ln">144</span>-// managedFields cleared.</div>
+        <div class="diff-line diff-add"><span class="ln">143</span>+// errors. If an error happens, we preserve the managedFields from</div>
+        <div class="diff-line diff-add"><span class="ln">144</span>+// liveObj.</div>
+        <div class="diff-line diff-ctx"><span class="ln">145</span> func (f *FieldManager) UpdateNoErrors(...) runtime.Object {</div>
+        <div class="diff-line diff-ctx"><span class="ln">146</span> 	obj, err := f.Update(liveObj, newObj, manager)</div>
+        <div class="diff-line diff-ctx"><span class="ln">147</span> 	if err != nil {</div>
+        <div class="diff-line diff-del"><span class="ln">148</span>-		atMostEverySecond.Do(func() {</div>
+        <div class="diff-line diff-del"><span class="ln">149</span>-			ns, name := "unknown", "unknown"</div>
+        <div class="diff-line diff-del"><span class="ln">150</span>-			if accessor, err := meta.Accessor(newObj); err == nil {</div>
+        <div class="diff-line diff-del"><span class="ln">151</span>-				ns = accessor.GetNamespace()</div>
+        <div class="diff-line diff-del"><span class="ln">152</span>-				name = accessor.GetName()</div>
+        <div class="diff-line diff-del"><span class="ln">153</span>-			}</div>
+        <div class="diff-line diff-del"><span class="ln">154</span>-			klog.ErrorS(err, "[SHOULD NOT HAPPEN] ...")</div>
+        <div class="diff-line diff-del"><span class="ln">155</span>-		})</div>
+        <div class="diff-line diff-del"><span class="ln">156</span>-		RemoveObjectManagedFields(newObj)</div>
+        <div class="diff-line diff-add"><span class="ln">148</span>+		if liveAccessor, aErr := meta.Accessor(liveObj); aErr == nil {</div>
+        <div class="diff-line diff-add"><span class="ln">149</span>+			if newAccessor, aErr := meta.Accessor(newObj); aErr == nil {</div>
+        <div class="diff-line diff-add"><span class="ln">150</span>+				atMostEverySecond.Do(func() {</div>
+        <div class="diff-line diff-add"><span class="ln">151</span>+					klog.ErrorS(err, "...restored previous managedFields...")</div>
+        <div class="diff-line diff-add"><span class="ln">152</span>+				})</div>
+        <div class="diff-line diff-add"><span class="ln">153</span>+				newAccessor.SetManagedFields(liveAccessor.GetManagedFields())</div>
+        <div class="diff-line diff-add"><span class="ln">154</span>+			}</div>
+        <div class="diff-line diff-add"><span class="ln">155</span>+		}</div>
+        <div class="diff-line diff-ctx"><span class="ln">156</span> 		return newObj</div>
+        <div class="diff-line diff-ctx"><span class="ln">157</span> 	}</div>
+        <div class="diff-line diff-ctx"><span class="ln">158</span> 	return obj</div>
+      </div>
+      <div class="example-annotation">
+        <strong>What happened:</strong> GPT-5.4 kept the existing function signature and
+        changed only the error-handling behavior inside the function body — instead of clearing
+        managed fields on failure, it copies them from the live object. One file changed,
+        zero callers affected, compiles and passes all tests.
+      </div>
+    </div>
+
+    <p>
+      Both patches address the same root cause (managed fields silently dropped on error),
+      but Opus reaches for the "proper" fix — surfacing the error to callers — while GPT
+      makes a pragmatic, backwards-compatible change within the existing API contract. In a
+      codebase the size of Kubernetes, the signature-changing approach requires exhaustively
+      finding every caller, and missing even one means the build breaks.
+    </p>
+
+    <p>
+      Within-scaffold comparisons (e.g., Claude Opus vs Claude Sonnet both on Vertex API,
+      or GPT-5.4 vs GPT-5.3 Codex both on Cursor CLI) are not affected by this confound.
+      Cross-scaffold comparisons (e.g., Claude on Vertex vs GPT on Cursor) should be
+      interpreted cautiously.
+    </p>
+
+    <h3>Go-Only Compilation Checking</h3>
+    <p>
+      The compile-rate metric and compilation-as-prerequisite grading only applies to Go
+      repositories, which have a well-defined <code>go build ./...</code> check. Instances
+      in other languages (if added in the future) use a different grading pipeline that may
+      not have an equivalent compilation gate.
+    </p>
+
+    <h3>Test-File Editing Prohibition</h3>
+    <p>
+      Candidate patches that modify test files are automatically rejected to prevent
+      reward-hacking. While this is necessary for evaluation integrity, it may penalize
+      legitimate fix approaches that require updating test helpers, fixtures, or
+      test-adjacent code (e.g., shared test utilities that aren't in <code>*_test.go</code>
+      files but live in <code>testdata/</code>).
+    </p>
+
+    <h3>Cost Measurement</h3>
+    <p>
+      Cost is measured differently across scaffolds. The Vertex API scaffold computes cost
+      from token counts and published per-token pricing. The Cursor CLI scaffold captures
+      cost from Cursor's usage event stream, which may include overhead not present in
+      direct API calls. These differences mean cost comparisons across scaffolds are
+      approximate.
+    </p>
+
+    <h3>Quarantine Filtering</h3>
+    <p>
+      Quarantined tests (known flaky or environment-specific) are excluded from grading.
+      This filtering is necessary to avoid false negatives from infrastructure issues, but
+      it means that a model could break a quarantined test without penalty. The set of
+      quarantined tests is manually curated and may not be exhaustive.
+    </p>
+
+  </div>
+</div>
+
+</body>
+</html>
