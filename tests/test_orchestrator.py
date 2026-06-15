@@ -241,8 +241,8 @@ def test_run_populates_cost_usd_from_price_table(tmp_path: Path) -> None:
     assert record.cost_usd != 0.0
 
 
-def test_grader_error_is_persisted_as_sentinel_record(tmp_path: Path) -> None:
-    """GraderError must write a record so the attempt is not retried on next run."""
+def test_grader_error_is_not_persisted(tmp_path: Path) -> None:
+    """GraderError must NOT write a record so the attempt can be retried."""
     store = FileStore(tmp_path / "runs.db")
 
     with patch(
@@ -254,13 +254,7 @@ def test_grader_error_is_persisted_as_sentinel_record(tmp_path: Path) -> None:
         orc.run(cfg, [_instance()], _workspace_factory, BudgetConfig(max_spend_usd=100.0))
 
     records = store.list_all()
-    assert len(records) == 1
-    r = records[0]
-    assert r.grader_error == "Docker timeout after 600s"
-    assert r.resolved is False
-    assert r.compiled is False
-    assert r.f2p_results == []
-    assert r.p2p_results == []
+    assert len(records) == 0
 
 
 def test_run_raises_before_inference_if_budget_exceeded(tmp_path: Path) -> None:
@@ -374,8 +368,8 @@ def test_grader_circuit_breaker_trips_after_consecutive_errors(tmp_path: Path) -
 
     assert exc_info.value.consecutive == 3
     assert "binary not found" in exc_info.value.last_error
-    # The 3 sentinel records that triggered the breaker should still be saved
-    assert len(store.list_all()) == 3
+    # Grader-errored records should not be persisted
+    assert len(store.list_all()) == 0
 
 
 def test_grader_circuit_breaker_resets_on_success(tmp_path: Path) -> None:
@@ -400,4 +394,5 @@ def test_grader_circuit_breaker_resets_on_success(tmp_path: Path) -> None:
             grader_circuit_limit=3,
         )
 
-    assert len(store.list_all()) == 4
+    # Only the 2 successful grades are persisted; 2 grader errors are skipped
+    assert len(store.list_all()) == 2

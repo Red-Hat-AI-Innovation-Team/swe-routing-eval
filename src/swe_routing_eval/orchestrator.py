@@ -209,17 +209,14 @@ class Orchestrator:
                 completed += 1
                 try:
                     record = future.result()
-                    self._store.save(record)  # save in main thread — SQLite is not thread-safe
-                    spent_usd += record.cost_usd
-                    status = "resolved" if record.resolved else "not resolved"
-                    logger.info(
-                        "[%d/%d] %s / %s / attempt %d → %s ($%.4f, cumulative $%.2f)",
-                        completed, len(work), tier, instance_id, idx,
-                        status, record.cost_usd, spent_usd,
-                    )
                     if record.grader_error:
                         consecutive_grader_errors += 1
                         last_grader_error = record.grader_error
+                        logger.warning(
+                            "[%d/%d] %s / %s / attempt %d → grader error (not saved): %s",
+                            completed, len(work), tier, instance_id, idx,
+                            record.grader_error,
+                        )
                         if consecutive_grader_errors >= grader_circuit_limit:
                             for f in future_to_key:
                                 f.cancel()
@@ -228,6 +225,14 @@ class Orchestrator:
                             )
                     else:
                         consecutive_grader_errors = 0
+                        self._store.save(record)
+                        spent_usd += record.cost_usd
+                        status = "resolved" if record.resolved else "not resolved"
+                        logger.info(
+                            "[%d/%d] %s / %s / attempt %d → %s ($%.4f, cumulative $%.2f)",
+                            completed, len(work), tier, instance_id, idx,
+                            status, record.cost_usd, spent_usd,
+                        )
                     if spent_usd >= warn_threshold:
                         logger.warning(
                             "Spend $%.2f has reached %.0f%% of cap $%.2f",

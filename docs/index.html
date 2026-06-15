@@ -643,17 +643,12 @@ body {
   <div class="summary-cards" id="summary-cards-gpt"></div>
 
   <div class="chart-section">
-    <h2>Cost-Performance Frontier <span class="info-tip">i<span class="tip-text">Each model is plotted by its cost per resolved problem (x) vs. resolution rate (y). Circles show pass@1 (single-attempt). Diamonds show pass@3 (at least one of 3 attempts resolved), with cost calculated as total spend across all attempts divided by instances solved.</span></span></h2>
+    <h2>Cost-Performance Frontier <span class="info-tip">i<span class="tip-text">Each model is plotted by its cost per resolved problem (x) vs. resolution rate (y). Use the pass@1/pass@3 toggle in the filter bar to switch metrics.</span></span></h2>
     <div id="pareto-chart"></div>
   </div>
 
   <div class="h2h-section" id="h2h-section">
-    <h2 id="h2h-title">Head-to-Head
-      <span class="h2h-toggle" id="h2h-toggle">
-        <button data-mode="pass1" class="active">pass@1</button>
-        <button data-mode="pass3">pass@3</button>
-      </span>
-    </h2>
+    <h2>Head-to-Head</h2>
     <div id="h2h-body"></div>
   </div>
 
@@ -702,7 +697,7 @@ const MODEL_SHORT = {
 };
 
 let DATA = null;
-let filters = { repos: new Set(), languages: new Set(), scaffold: 'API' };
+let filters = { repos: new Set(), languages: new Set(), scaffold: 'Cursor CLI' };
 let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
 
@@ -735,7 +730,7 @@ function modelScaffold(model) {
 }
 
 function allScaffolds() {
-  return [...new Set(DATA.models.map(modelScaffold))].sort();
+  return [...new Set(DATA.models.map(modelScaffold))].sort().reverse();
 }
 
 function filteredModels() {
@@ -794,10 +789,31 @@ function renderFilters() {
     bar.appendChild(toggle);
   }
 
+  const passToggle = document.createElement('span');
+  passToggle.className = 'h2h-toggle';
+  passToggle.style.marginLeft = '8px';
+  ['pass@1', 'pass@3'].forEach(label => {
+    const mode = label === 'pass@1' ? 'pass1' : 'pass3';
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.dataset.mode = mode;
+    if (passMode === mode) btn.classList.add('active');
+    btn.onclick = () => {
+      passMode = mode;
+      passToggle.querySelectorAll('button').forEach(b =>
+        b.classList.toggle('active', b.dataset.mode === passMode)
+      );
+      renderParetoChart();
+      renderH2H();
+    };
+    passToggle.appendChild(btn);
+  });
+  bar.appendChild(passToggle);
+
   const reset = document.createElement('button');
   reset.className = 'filter-reset';
   reset.textContent = 'Clear filters';
-  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); filters.scaffold = 'Cursor CLI'; renderFilters(); renderAll(); };
+  reset.onclick = () => { filters.repos.clear(); filters.languages.clear(); filters.scaffold = 'Cursor CLI'; passMode = 'pass1'; renderFilters(); renderAll(); };
   bar.appendChild(reset);
 
   const summary = document.createElement('span');
@@ -878,8 +894,10 @@ function renderSummaryCards() {
       if (runs && runs.some(a => a.r)) instancesSolved++;
     });
     const passAt3 = nInstances ? (instancesSolved / nInstances * 100) : 0;
-    const avgCost = nInstances ? (attempts.reduce((s, a) => s + a.cost, 0) / nInstances) : 0;
-    const costPerSolve = resolved ? (attempts.reduce((s, a) => s + a.cost, 0) / resolved) : null;
+    const paidAttempts = attempts.filter(a => a.cost > 0);
+    const totalCostPaid = paidAttempts.reduce((s, a) => s + a.cost, 0);
+    const avgCost = paidAttempts.length ? (totalCostPaid / nInstances) : 0;
+    const costPerSolve = resolved ? (totalCostPaid / resolved) : null;
     const goAttempts = [];
     ids.forEach(id => {
       if (DATA.instances[id].language !== 'go') return;
@@ -954,38 +972,39 @@ function renderParetoChart() {
     });
     if (!attempts.length) return;
 
-    const resolved = attempts.filter(a => a.r).length;
-    const total = attempts.length;
-    const rate = resolved / total;
-    const totalCost = attempts.reduce((s, a) => s + a.cost, 0);
-    const costPerResolved = resolved > 0 ? totalCost / resolved : null;
-
-    if (costPerResolved === null) return;
-
+    const totalCost = attempts.filter(a => a.cost > 0).reduce((s, a) => s + a.cost, 0);
     const color = MODEL_COLORS[model] || '#58a6ff';
 
-    traces.push({
-      x: [costPerResolved],
-      y: [rate],
-      mode: 'markers+text',
-      type: 'scatter',
-      name: shortModel(model) + ' pass@1',
-      text: [shortModel(model)],
-      textposition: 'top center',
-      textfont: { color, size: 13 },
-      marker: { color, size: 14, line: { width: 2, color: '#0d1117' } },
-      hovertemplate: `<b>${shortModel(model)} (pass@1)</b><br>` +
-        `Resolution: %{y:.1%}<br>` +
-        `Cost/resolve: $%{x:.2f}<br>` +
-        `<extra></extra>`,
-    });
+    if (passMode === 'pass1') {
+      const resolved = attempts.filter(a => a.r).length;
+      const total = attempts.length;
+      const rate = resolved / total;
+      const costPerResolved = resolved > 0 ? totalCost / resolved : null;
+      if (costPerResolved === null) return;
 
-    let instancesSolved = 0;
-    ids.forEach(id => {
-      const runs = (DATA.runs[model] || {})[id];
-      if (runs && runs.some(a => a.r)) instancesSolved++;
-    });
-    if (instancesSolved > 0) {
+      traces.push({
+        x: [costPerResolved],
+        y: [rate],
+        mode: 'markers+text',
+        type: 'scatter',
+        name: shortModel(model),
+        text: [shortModel(model)],
+        textposition: 'top center',
+        textfont: { color, size: 13 },
+        marker: { color, size: 14, line: { width: 2, color: '#0d1117' } },
+        hovertemplate: `<b>${shortModel(model)} (pass@1)</b><br>` +
+          `Resolution: %{y:.1%}<br>` +
+          `Cost/resolve: $%{x:.2f}<br>` +
+          `<extra></extra>`,
+      });
+    } else {
+      let instancesSolved = 0;
+      ids.forEach(id => {
+        const runs = (DATA.runs[model] || {})[id];
+        if (runs && runs.some(a => a.r)) instancesSolved++;
+      });
+      if (instancesSolved === 0) return;
+
       const passAt3Rate = instancesSolved / nInstances;
       const costPerResolvedAt3 = totalCost / instancesSolved;
       traces.push({
@@ -993,11 +1012,11 @@ function renderParetoChart() {
         y: [passAt3Rate],
         mode: 'markers+text',
         type: 'scatter',
-        name: shortModel(model) + ' pass@3',
-        text: [shortModel(model) + ' @3'],
+        name: shortModel(model),
+        text: [shortModel(model)],
         textposition: 'top center',
-        textfont: { color, size: 11 },
-        marker: { color, size: 10, symbol: 'diamond', line: { width: 2, color: '#0d1117' } },
+        textfont: { color, size: 13 },
+        marker: { color, size: 14, symbol: 'diamond', line: { width: 2, color: '#0d1117' } },
         hovertemplate: `<b>${shortModel(model)} (pass@3)</b><br>` +
           `Resolution: %{y:.1%}<br>` +
           `Cost/resolve: $%{x:.2f}<br>` +
@@ -1075,7 +1094,7 @@ function renderTable() {
       }
     });
     return { id, inst, modelStats };
-  });
+  }).filter(row => filteredModels().some(m => row.modelStats[m]));
 
   rows.sort((a, b) => {
     let va, vb, aN = false, bN = false;
@@ -1115,7 +1134,8 @@ function renderTable() {
         const pct = (s.rate * 100).toFixed(1);
         const cls = s.rate === 1 ? 'cell-resolved' : s.rate > 0 ? 'cell-partial' : 'cell-failed';
         const runs = DATA.runs[m][row.id];
-        const avgCost = (runs.reduce((sum, a) => sum + a.cost, 0) / runs.length).toFixed(2);
+        const paidRuns = runs.filter(a => a.cost > 0);
+        const avgCost = paidRuns.length ? (paidRuns.reduce((sum, a) => sum + a.cost, 0) / paidRuns.length).toFixed(2) : '0.00';
         const avgWall = runs.reduce((sum, a) => sum + a.wall, 0) / runs.length;
         cells.push(`<td class="cell-model ${cls}" data-instance="${row.id}" data-model="${m}" title="Avg cost: $${avgCost} | Avg wall-clock: ${fmtWall(avgWall)}">${s.resolved}/${s.total} (${pct}%)</td>`);
       }
@@ -1342,7 +1362,7 @@ function connorPower(pDiscordant, delta, alpha = 0.05, power = 0.80) {
   return Math.ceil(num / (delta * delta));
 }
 
-let h2hMode = 'pass1';
+let passMode = 'pass1';
 
 const H2H_PAIRS = [
   { models: ['claude-opus-4-6', 'claude-sonnet-4-6'], scaffold: 'API' },
@@ -1372,7 +1392,7 @@ function renderH2HPair(pair, ids) {
   sharedIds.forEach(id => {
     const ar = aRuns[id];
     const br = bRuns[id];
-    if (h2hMode === 'pass3') {
+    if (passMode === 'pass3') {
       aResolved.push(ar.some(a => a.r));
       bResolved.push(br.some(a => a.r));
     } else {
@@ -1382,10 +1402,10 @@ function renderH2HPair(pair, ids) {
         bResolved.push(!!br[i].r);
       }
     }
-    ar.forEach(a => { aTotalCost += a.cost; aTotalWall += a.wall; });
-    br.forEach(a => { bTotalCost += a.cost; bTotalWall += a.wall; });
-    aTotalAttempts += ar.length;
-    bTotalAttempts += br.length;
+    ar.forEach(a => { if (a.cost > 0) aTotalCost += a.cost; aTotalWall += a.wall; });
+    br.forEach(a => { if (a.cost > 0) bTotalCost += a.cost; bTotalWall += a.wall; });
+    aTotalAttempts += ar.filter(a => a.cost > 0).length;
+    bTotalAttempts += br.filter(a => a.cost > 0).length;
   });
 
   const aCount = aResolved.filter(Boolean).length;
@@ -1393,10 +1413,10 @@ function renderH2HPair(pair, ids) {
   const nPairs = aResolved.length;
   const aRate = nPairs ? aCount / nPairs : 0;
   const bRate = nPairs ? bCount / nPairs : 0;
-  const aAvgCost = h2hMode === 'pass3' ? aTotalCost / sharedIds.length : aTotalCost / aTotalAttempts;
-  const bAvgCost = h2hMode === 'pass3' ? bTotalCost / sharedIds.length : bTotalCost / bTotalAttempts;
-  const aAvgWall = h2hMode === 'pass3' ? aTotalWall / sharedIds.length : aTotalWall / aTotalAttempts;
-  const bAvgWall = h2hMode === 'pass3' ? bTotalWall / sharedIds.length : bTotalWall / bTotalAttempts;
+  const aAvgCost = passMode === 'pass3' ? aTotalCost / sharedIds.length : aTotalCost / aTotalAttempts;
+  const bAvgCost = passMode === 'pass3' ? bTotalCost / sharedIds.length : bTotalCost / bTotalAttempts;
+  const aAvgWall = passMode === 'pass3' ? aTotalWall / sharedIds.length : aTotalWall / aTotalAttempts;
+  const bAvgWall = passMode === 'pass3' ? bTotalWall / sharedIds.length : bTotalWall / bTotalAttempts;
 
   const { statistic, pValue, b, c } = mcnemar(aResolved, bResolved);
   const pDisc = nPairs ? (b + c) / nPairs : 0;
@@ -1440,7 +1460,7 @@ function renderH2HPair(pair, ids) {
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
       <div>
         <div style="font-size:13px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:12px;">
-          Resolution Rate (${h2hMode === 'pass3' ? 'instance-level, any attempt' : 'per attempt'})
+          Resolution Rate (${passMode === 'pass3' ? 'instance-level, any attempt' : 'per attempt'})
         </div>
         <div class="h2h-bar-row">
           <div class="h2h-bar-label" style="color:${aColor}">${labelA}</div>
@@ -1460,19 +1480,19 @@ function renderH2HPair(pair, ids) {
       <div class="h2h-grid" style="grid-template-columns: 1fr 1fr;">
         <div class="h2h-stat">
           <div class="stat-value" style="color:${aColor}">$${aAvgCost.toFixed(2)} ${costDelta}</div>
-          <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
+          <div class="stat-label">${labelA} ${passMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${bColor}">$${bAvgCost.toFixed(2)}</div>
-          <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
+          <div class="stat-label">${labelB} ${passMode === 'pass3' ? 'total cost/inst' : 'avg cost/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${aColor}">${fmtWall(aAvgWall)} ${wallDelta}</div>
-          <div class="stat-label">${labelA} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
+          <div class="stat-label">${labelA} ${passMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
         <div class="h2h-stat">
           <div class="stat-value" style="color:${bColor}">${fmtWall(bAvgWall)}</div>
-          <div class="stat-label">${labelB} ${h2hMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
+          <div class="stat-label">${labelB} ${passMode === 'pass3' ? 'total wall-clock/inst' : 'avg wall-clock/attempt'}</div>
         </div>
       </div>
     </div>
@@ -1480,20 +1500,20 @@ function renderH2HPair(pair, ids) {
     <div class="h2h-power">
       <div class="power-title">Statistical Power (McNemar paired test, Connor 1987 sizing)</div>
       <div class="power-row">
-        <span class="label">Paired observations${tip(h2hMode === 'pass3' ? 'Number of shared instances (one observation per instance).' : 'Number of paired attempts (one per attempt index per shared instance).')}</span>
-        <span>${nPairs}${h2hMode === 'pass1' ? ` (${sharedIds.length} instances × paired attempts)` : ' instances'}</span>
+        <span class="label">Paired observations${tip(passMode === 'pass3' ? 'Number of shared instances (one observation per instance).' : 'Number of paired attempts (one per attempt index per shared instance).')}</span>
+        <span>${nPairs}${passMode === 'pass1' ? ` (${sharedIds.length} instances × paired attempts)` : ' instances'}</span>
       </div>
       <div class="power-row">
-        <span class="label">Discordant pairs${tip(h2hMode === 'pass3' ? 'Instances where one model solved and the other didn\'t.' : 'Attempt pairs where one model solved and the other didn\'t.')}</span>
+        <span class="label">Discordant pairs${tip(passMode === 'pass3' ? 'Instances where one model solved and the other didn\'t.' : 'Attempt pairs where one model solved and the other didn\'t.')}</span>
         <span>${b + c} (b=${b} ${labelA}-only, c=${c} ${labelB}-only)</span>
       </div>
       <div class="power-row">
-        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: both models solve the same ' + (h2hMode === 'pass3' ? 'instances' : 'attempts') + ').')}</span>
+        <span class="label">McNemar p-value${tip('Two-sided McNemar test with continuity correction. Tests whether the discordance is symmetric (H0: both models solve the same ' + (passMode === 'pass3' ? 'instances' : 'attempts') + ').')}</span>
         <span class="${sigClass}">${pLabel}${pValue < 0.05 ? ' — significant' : ' — not yet significant'}</span>
       </div>
       <div class="power-row">
         <span class="label">Required N for p=0.05${tip('Connor (1987) sample size for 80% power to detect a 10pp difference in paired proportions, given the observed discordance rate.')}</span>
-        <span class="${isSignificant ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${h2hMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : poweredNoSignal ? ` (powered — ${pValue < 0.10 ? 'borderline, may reach significance' : 'no significant difference detected'})` : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
+        <span class="${isSignificant ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${passMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : poweredNoSignal ? ` (powered — ${pValue < 0.10 ? 'borderline, may reach significance' : 'no significant difference detected'})` : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
       </div>
     </div>
   `;
@@ -1509,16 +1529,6 @@ function renderH2H() {
     return;
   }
   section.style.display = '';
-  const titleEl = document.getElementById('h2h-title');
-  const toggleHTML = `<span class="h2h-toggle"><button data-mode="pass1"${h2hMode === 'pass1' ? ' class="active"' : ''}>pass@1</button><button data-mode="pass3"${h2hMode === 'pass3' ? ' class="active"' : ''}>pass@3</button></span>`;
-  titleEl.innerHTML = `Head-to-Head ${toggleHTML}`;
-  titleEl.querySelector('.h2h-toggle').addEventListener('click', e => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    h2hMode = btn.dataset.mode;
-    titleEl.querySelectorAll('.h2h-toggle button').forEach(b => b.classList.toggle('active', b === btn));
-    renderH2H();
-  });
   const ids = filteredInstanceIds();
   body.innerHTML = matchingPairs.map((pair, i) =>
     (i > 0 ? '<hr style="border:none; border-top:1px solid var(--border); margin:24px 0;">' : '') +
