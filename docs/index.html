@@ -640,12 +640,16 @@ body {
   <div class="filter-bar" id="filter-bar"></div>
 
   <div class="intro" id="intro"></div>
-  <div class="summary-cards" id="summary-cards-anthropic"></div>
-  <div class="summary-cards" id="summary-cards-gpt"></div>
+  <div class="summary-cards" id="summary-cards"></div>
 
   <div class="chart-section">
     <h2>Cost-Performance Frontier <span class="info-tip">i<span class="tip-text">Each model is plotted by its cost per resolved problem (x) vs. resolution rate (y). Use the pass@1/pass@3 toggle in the filter bar to switch metrics.</span></span></h2>
     <div id="pareto-chart"></div>
+  </div>
+
+  <div class="chart-section">
+    <h2>Resolve Rate by Merge Date <span class="info-tip">i<span class="tip-text">Resolution rate binned by the month the human fix was merged. A decline on recent (post-training-cutoff) instances may indicate contamination on older ones; a flat line suggests the model generalizes.</span></span></h2>
+    <div id="date-chart" style="width:100%; height:400px;"></div>
   </div>
 
   <div class="h2h-section" id="h2h-section">
@@ -701,6 +705,14 @@ let DATA = null;
 let filters = { repos: new Set(), languages: new Set(), scaffold: 'Cursor CLI' };
 let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
+
+function patchFiles(patch) {
+  if (!patch) return [];
+  return [...new Set(patch.split('\n').filter(l => l.startsWith('diff --git')).map(l => {
+    const m = l.match(/^diff --git a\/(.+) b\//);
+    return m ? m[1] : '';
+  }).filter(Boolean))].sort();
+}
 
 function shortModel(m) { return MODEL_SHORT[m] || m; }
 function fmtWall(s) {
@@ -805,6 +817,7 @@ function renderFilters() {
         b.classList.toggle('active', b.dataset.mode === passMode)
       );
       renderParetoChart();
+      renderDateChart();
       renderH2H();
     };
     passToggle.appendChild(btn);
@@ -872,25 +885,26 @@ document.addEventListener('click', () => {
 // ── Summary Cards ──
 
 function renderSummaryCards() {
-  const anthropicContainer = document.getElementById('summary-cards-anthropic');
-  const gptContainer = document.getElementById('summary-cards-gpt');
-  anthropicContainer.innerHTML = '';
-  gptContainer.innerHTML = '';
+  const container = document.getElementById('summary-cards');
+  container.innerHTML = '';
   const ids = filteredInstanceIds();
 
-  [...filteredModels()].reverse().forEach(model => {
+  const models = filteredModels();
+  const sharedIds = ids.filter(id => models.every(m => (DATA.runs[m] || {})[id]));
+
+  const cardData = models.map(model => {
     const attempts = [];
-    ids.forEach(id => {
+    sharedIds.forEach(id => {
       const runs = (DATA.runs[model] || {})[id];
       if (runs) attempts.push(...runs);
     });
 
-    const nInstances = ids.filter(id => (DATA.runs[model] || {})[id]).length;
+    const nInstances = sharedIds.length;
     const resolved = attempts.filter(a => a.r).length;
     const total = attempts.length;
     const solveRate = total ? (resolved / total * 100) : 0;
     let instancesSolved = 0;
-    ids.forEach(id => {
+    sharedIds.forEach(id => {
       const runs = (DATA.runs[model] || {})[id];
       if (runs && runs.some(a => a.r)) instancesSolved++;
     });
@@ -900,17 +914,44 @@ function renderSummaryCards() {
     const avgCost = paidAttempts.length ? (totalCostPaid / nInstances) : 0;
     const costPerSolve = resolved ? (totalCostPaid / resolved) : null;
     const goAttempts = [];
-    ids.forEach(id => {
+    sharedIds.forEach(id => {
       if (DATA.instances[id].language !== 'go') return;
       const runs = (DATA.runs[model] || {})[id];
       if (runs) goAttempts.push(...runs);
     });
     const compileRate = goAttempts.length ? (goAttempts.filter(a => a.c).length / goAttempts.length * 100) : 0;
+    let dupCount = 0, dupTotal = 0, fileMatchCount = 0, fileMatchTotal = 0;
+    sharedIds.forEach(id => {
+      const hp = DATA.instances[id].human_patch || '';
+      const hpStripped = hp.replace(/\s/g, '');
+      if (!hpStripped) return;
+      const humanFiles = patchFiles(hp).join('\0');
+      const runs = (DATA.runs[model] || {})[id];
+      runs.forEach(a => {
+        dupTotal++;
+        if ((a.patch || '').replace(/\s/g, '') === hpStripped) dupCount++;
+        if (a.patch) {
+          fileMatchTotal++;
+          if (patchFiles(a.patch).join('\0') === humanFiles) fileMatchCount++;
+        }
+      });
+    });
+    const dupRate = dupTotal ? (dupCount / dupTotal * 100) : 0;
+    const fileMatchRate = fileMatchTotal ? (fileMatchCount / fileMatchTotal * 100) : 0;
     const walls = attempts.map(a => a.wall).sort((a, b) => a - b);
     const medianWall = walls.length ? walls[Math.floor(walls.length / 2)] : 0;
     const turnsList = attempts.map(a => a.turns).sort((a, b) => a - b);
     const medianTurns = turnsList.length ? turnsList[Math.floor(turnsList.length / 2)] : 0;
 
+    return { model, solveRate, passAt3, resolved, total, instancesSolved, nInstances,
+      avgCost, costPerSolve, compileRate, dupRate, fileMatchRate, medianWall, medianTurns };
+  });
+
+  cardData.sort((a, b) => b.solveRate - a.solveRate);
+
+  cardData.forEach(d => {
+    const { model, solveRate, passAt3, resolved, total, instancesSolved, nInstances,
+      avgCost, costPerSolve, compileRate, dupRate, fileMatchRate, medianWall, medianTurns } = d;
     const color = MODEL_COLORS[model] || '#58a6ff';
     const isCLI = modelScaffold(model) === 'Cursor CLI';
     const card = document.createElement('div');
@@ -935,6 +976,14 @@ function renderSummaryCards() {
           <div class="metric-label">Compile rate (Go)${tip('Fraction of Go attempts where the candidate patch compiled successfully. Excludes non-Go repos which use a different grading pipeline.')}</div>
         </div>
         <div class="metric-item">
+          <div class="metric-value">${dupRate.toFixed(0)}%</div>
+          <div class="metric-label">Human-patch match${tip('Fraction of attempts whose patch is identical to the canonical human fix after stripping whitespace. High values may indicate memorization.')}</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-value">${fileMatchRate.toFixed(0)}%</div>
+          <div class="metric-label">File-target match${tip('Fraction of attempts that edited exactly the same set of files as the canonical human fix. High values with low resolve rates may suggest the model has seen the fix but cannot reproduce it.')}</div>
+        </div>
+        <div class="metric-item">
           <div class="metric-value">${fmtWall(medianWall)}</div>
           <div class="metric-label">Median wall-clock${tip('Median end-to-end time per attempt, including model inference and tool execution.')}</div>
         </div>
@@ -944,18 +993,12 @@ function renderSummaryCards() {
         </div>`}
         <div class="metric-item">
           <div class="metric-value">${nInstances}</div>
-          <div class="metric-label">Instances evaluated${tip('Number of unique problem instances this model has been evaluated on in the current filter.')}</div>
+          <div class="metric-label">Shared instances${tip('Number of instances where all currently visible models have results. Metrics are computed over this shared set for fair comparison.')}</div>
         </div>
       </div>
     `;
-    const container = model.startsWith('gpt-') ? gptContainer : anthropicContainer;
     container.appendChild(card);
   });
-
-  if (gptContainer.children.length && anthropicContainer.children.length) {
-    const cols = getComputedStyle(anthropicContainer).gridTemplateColumns;
-    gptContainer.style.gridTemplateColumns = cols;
-  }
 }
 
 // ── Pareto Chart ──
@@ -1049,6 +1092,86 @@ function renderParetoChart() {
   };
 
   Plotly.react('pareto-chart', traces, layout, { responsive: true, displayModeBar: false });
+}
+
+// ── Resolve Rate by Date ──
+
+function renderDateChart() {
+  const ids = filteredInstanceIds();
+  const models = filteredModels();
+
+  const byMonth = {};
+  ids.forEach(id => {
+    const inst = DATA.instances[id];
+    if (!inst.fix_merge_date) return;
+    const month = inst.fix_merge_date.slice(0, 7);
+    if (!byMonth[month]) byMonth[month] = {};
+    models.forEach(model => {
+      const runs = (DATA.runs[model] || {})[id];
+      if (!runs) return;
+      if (!byMonth[month][model]) byMonth[month][model] = { resolved: 0, total: 0, instances: 0, instancesSolved: 0 };
+      const entry = byMonth[month][model];
+      entry.instances++;
+      if (runs.some(a => a.r)) entry.instancesSolved++;
+      runs.forEach(a => {
+        entry.total++;
+        if (a.r) entry.resolved++;
+      });
+    });
+  });
+
+  const months = Object.keys(byMonth).sort();
+  const isPass3 = passMode === 'pass3';
+  const traces = models.map(model => {
+    const x = [], y = [], text = [];
+    months.forEach(m => {
+      const s = (byMonth[m] || {})[model];
+      if (!s || !s.total) return;
+      x.push(m);
+      if (isPass3) {
+        y.push(s.instancesSolved / s.instances);
+        text.push(`${s.instancesSolved}/${s.instances}`);
+      } else {
+        y.push(s.resolved / s.total);
+        text.push(`${s.resolved}/${s.total}`);
+      }
+    });
+    if (!x.length) return null;
+    const color = MODEL_COLORS[model] || '#58a6ff';
+    return {
+      x, y, text,
+      mode: 'lines+markers',
+      type: 'scatter',
+      name: shortModel(model),
+      line: { color, width: 2 },
+      marker: { color, size: 7 },
+      hovertemplate: `<b>${shortModel(model)}</b><br>%{x}<br>%{text} resolved (%{y:.0%})<extra></extra>`,
+    };
+  }).filter(Boolean);
+
+  const rateLabel = isPass3 ? 'pass@3' : 'pass@1';
+  const layout = {
+    paper_bgcolor: '#161b22',
+    plot_bgcolor: '#161b22',
+    font: { color: '#e6edf3', family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+    xaxis: {
+      title: 'Human Fix Merge Month',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+    },
+    yaxis: {
+      title: `Resolution Rate (${rateLabel})`,
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+      tickformat: '.0%',
+      range: [0, 1.05],
+    },
+    legend: { orientation: 'h', y: -0.2 },
+    margin: { t: 30, r: 30, b: 80, l: 70 },
+    hovermode: 'x unified',
+  };
+
+  Plotly.react('date-chart', traces, layout, { responsive: true, displayModeBar: false });
 }
 
 // ── Results Table ──
@@ -1176,6 +1299,22 @@ function renderDetailAttempt(attemptIndex) {
       <span class="status-dot ${dotClass}"></span>Attempt ${i}
     </div>`;
   }).join('');
+  const humanPatch = DATA.instances[instanceId].human_patch || '';
+  const humanTab = humanPatch ? `<div class="attempt-tab${attemptIndex === 'human' ? ' active' : ''}" data-attempt="human">Human Patch</div>` : '';
+
+  if (attemptIndex === 'human') {
+    body.innerHTML = `
+      <div class="attempt-tabs">${tabs}${humanTab}</div>
+      <div class="detail-section">
+        <h4>Canonical Human Patch</h4>
+        ${renderDiff(humanPatch)}
+      </div>
+    `;
+    body.querySelectorAll('.attempt-tab').forEach(tab => {
+      tab.onclick = () => renderDetailAttempt(tab.dataset.attempt === 'human' ? 'human' : parseInt(tab.dataset.attempt));
+    });
+    return;
+  }
 
   const run = runs[attemptIndex];
 
@@ -1246,7 +1385,7 @@ function renderDetailAttempt(attemptIndex) {
   `;
 
   body.innerHTML = `
-    <div class="attempt-tabs">${tabs}</div>
+    <div class="attempt-tabs">${tabs}${humanTab}</div>
     ${statsHtml}
     ${f2pHtml}
     ${p2pHtml}
@@ -1254,7 +1393,7 @@ function renderDetailAttempt(attemptIndex) {
   `;
 
   body.querySelectorAll('.attempt-tab').forEach(tab => {
-    tab.onclick = () => renderDetailAttempt(parseInt(tab.dataset.attempt));
+    tab.onclick = () => renderDetailAttempt(tab.dataset.attempt === 'human' ? 'human' : parseInt(tab.dataset.attempt));
   });
 }
 
@@ -1367,7 +1506,7 @@ let passMode = 'pass1';
 
 const H2H_PAIRS = [
   { models: ['claude-opus-4-6', 'claude-sonnet-4-6'], scaffold: 'API' },
-  { models: ['claude-4.6-opus-max-thinking', 'gpt-5.4-xhigh'], scaffold: 'API' },
+  { models: ['gpt-5.4-xhigh', 'claude-4.6-opus-max-thinking'], scaffold: 'API' },
   { models: ['claude-4.6-opus-max-thinking', 'claude-4.6-sonnet-medium-thinking'], scaffold: 'API' },
   { models: ['gpt-5.4-xhigh', 'gpt-5.3-codex-xhigh'], scaffold: 'API' },
 ];
@@ -1514,7 +1653,7 @@ function renderH2HPair(pair, ids) {
       </div>
       <div class="power-row">
         <span class="label">Required N for p=0.05${tip('Connor (1987) sample size for 80% power to detect a 10pp difference in paired proportions, given the observed discordance rate.')}</span>
-        <span class="${isSignificant ? 'h2h-powered' : 'h2h-underpowered'}">${requiredNText} ${passMode === 'pass3' ? 'instances' : 'paired attempts'}${isSignificant ? ' (already significant)' : poweredNoSignal ? ` (powered — ${pValue < 0.10 ? 'borderline, may reach significance' : 'no significant difference detected'})` : ` (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
+        <span class="${isSignificant ? 'h2h-powered' : 'h2h-underpowered'}">${isSignificant ? `Already significant at N=${nPairs} (${pLabel})` : poweredNoSignal ? `${requiredNText} ${passMode === 'pass3' ? 'instances' : 'paired attempts'} (powered — ${pValue < 0.10 ? 'borderline, may reach significance' : 'no significant difference detected'})` : `${requiredNText} ${passMode === 'pass3' ? 'instances' : 'paired attempts'} (need ${requiredN !== null ? requiredN - nPairs : '?'} more)`}</span>
       </div>
     </div>
   `;
@@ -1572,6 +1711,7 @@ function renderIntro() {
       <div><dt>Total attempts</dt><dd>${nRuns} (k=3 per model per instance)</dd></div>
       <div><dt>Languages</dt><dd>${langs.join(', ')}</dd></div>
       <div><dt>Grading</dt><dd>Docker-isolated, fail-to-pass + pass-to-pass tests</dd></div>
+      <div><dt>Limit</dt><dd>${filters.scaffold === 'API' ? '30 conversation turns' : filters.scaffold === 'Cursor CLI' ? '30 minutes' : '30 minutes (Cursor CLI) / 30 conversation turns (API)'}</dd></div>
     </dl>
   `;
 }
@@ -1590,6 +1730,7 @@ function renderAll() {
   renderIntro();
   renderSummaryCards();
   renderParetoChart();
+  renderDateChart();
   renderH2H();
   renderTable();
 }

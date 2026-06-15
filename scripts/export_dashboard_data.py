@@ -78,6 +78,7 @@ def main() -> None:
                 "n_fail_to_pass": inst.n_fail_to_pass,
                 "issue_url": issue_url(iid),
                 "fix_merge_date": inst.fix_merge_date,
+                "human_patch": inst.patch or "",
             }
         else:
             owner, repo_name, _ = parse_instance_id(iid)

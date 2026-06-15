@@ -504,6 +504,26 @@ body {
       approximate.
     </p>
 
+    <h3>AI-Assisted Canonical Patches</h3>
+    <p>
+      The dashboard's "Resolve Rate by Merge Date" chart shows a positive correlation
+      between merge date and resolution rate — models do <em>better</em> on newer instances,
+      not worse. While the absence of a decline on recent instances is evidence against
+      training-data contamination, the positive trend has an alternative explanation:
+      maintainers may be increasingly using AI tools to write their fix patches. If newer
+      "human" patches are in fact AI-assisted, they would be stylistically closer to what
+      models naturally produce — more formulaic error handling, more conventional variable
+      naming, simpler structure — making them easier for the same models to reproduce. In
+      that scenario, the eval would partly measure whether models can replicate
+      model-generated code rather than genuinely human-authored fixes.
+    </p>
+    <p>
+      We do not currently control for this. Possible mitigations include checking PR
+      metadata for co-authorship signals (e.g. <code>Co-authored-by</code> trailers,
+      bot-opened PRs), analyzing patch stylometry for model-typical patterns, or filtering
+      to instances whose canonical fix predates widespread AI coding tool adoption.
+    </p>
+
     <h3>Quarantine Filtering</h3>
     <p>
       Quarantined tests (known flaky or environment-specific) are excluded from grading.
