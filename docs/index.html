@@ -991,10 +991,6 @@ function renderSummaryCards() {
           <div class="metric-value">${medianTurns}</div>
           <div class="metric-label">Median turns${tip('Median number of agentic turns (model responses) per attempt.')}</div>
         </div>`}
-        <div class="metric-item">
-          <div class="metric-value">${nInstances}</div>
-          <div class="metric-label">Shared instances${tip('Number of instances where all currently visible models have results. Metrics are computed over this shared set for fair comparison.')}</div>
-        </div>
       </div>
     `;
     container.appendChild(card);
