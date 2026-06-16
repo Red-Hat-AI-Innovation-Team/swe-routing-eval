@@ -285,6 +285,8 @@ def safe_grade(
     2. Call the grader with the candidate patch (issue #4).
     3. Filter quarantined tests and apply etcd unit-package restriction (issue #6).
     """
+    if not candidate_patch.strip():
+        return GradeResult(resolved=False, compiled=False)
     if touches_test_files(candidate_patch):
         return GradeResult(resolved=False, compiled=False, rejected_test_edit=True)
     result = grader.grade(instance, candidate_patch)
