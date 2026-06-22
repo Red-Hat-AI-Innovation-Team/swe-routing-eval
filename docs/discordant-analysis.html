@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discordant Analysis — Red Hat SWE-bench Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-yellow: #d29922;
+  --accent-purple: #bc8cff;
+  --accent-orange: #f97316;
+  --accent-teal: #2dd4bf;
+  --accent-pink: #f472b6;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.header h1 { font-size: 24px; font-weight: 600; }
+.header a {
+  font-size: 14px;
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+.header a:hover { text-decoration: underline; }
+
+/* Section nav */
+.section-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-primary);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.section-nav a {
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.section-nav a:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+/* Prose */
+.prose { color: var(--text-secondary); font-size: 15px; line-height: 1.7; }
+.prose h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.prose h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 28px 0 10px;
+}
+.prose p { margin-bottom: 14px; }
+.prose strong { color: var(--text-primary); }
+.prose a { color: var(--accent-blue); text-decoration: none; }
+.prose a:hover { text-decoration: underline; }
+.prose ul, .prose ol { margin: 0 0 14px 24px; }
+.prose li { margin-bottom: 6px; }
+.prose code {
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+/* Chart section */
+.chart-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.chart-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+
+/* Summary cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.summary-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+.summary-card .model-name {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.summary-card .primary-metric {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.summary-card .primary-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Stat grid for behavioral patterns */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.stat-box .stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.stat-box .stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.stat-box .stat-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+/* Tag */
+.tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Category badge */
+.category-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.category-badge.anthropic {
+  background: rgba(188,140,255,0.15);
+  color: var(--accent-purple);
+}
+.category-badge.gpt {
+  background: rgba(249,115,22,0.15);
+  color: var(--accent-orange);
+}
+
+/* Case study card */
+.case-study-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+.case-study-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.case-study-header h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.case-study-header .instance-id {
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 13px;
+  color: var(--accent-blue);
+}
+.case-study-body { padding: 20px; }
+.case-study-target {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+.case-study-target code {
+  font-family: 'SFMono-Regular', 'Menlo', monospace;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+/* Attempt matrix */
+.attempt-matrix {
+  display: grid;
+  grid-template-columns: auto repeat(3, 1fr);
+  gap: 2px;
+  margin-bottom: 20px;
+  max-width: 400px;
+}
+.attempt-matrix .am-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  padding: 6px 10px;
+  text-align: center;
+}
+.attempt-matrix .am-model {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+}
+.attempt-matrix .am-cell {
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+.am-cell.pass {
+  background: rgba(63,185,80,0.2);
+  color: var(--accent-green);
+}
+.am-cell.fail {
+  background: rgba(248,81,73,0.12);
+  color: var(--accent-red);
+}
+.am-cell.nocompile {
+  background: rgba(248,81,73,0.25);
+  color: #ff6b6b;
+}
+.am-cell.partial {
+  background: rgba(210,153,34,0.15);
+  color: var(--accent-yellow);
+}
+
+/* Diff panels */
+.diff-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .diff-panels { grid-template-columns: 1fr; }
+}
+.diff-panel {
+  overflow: hidden;
+}
+.diff-panel-header {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.diff-panel-header.winner {
+  background: rgba(63,185,80,0.1);
+  color: var(--accent-green);
+  border: 1px solid rgba(63,185,80,0.2);
+  border-bottom: none;
+}
+.diff-panel-header.loser {
+  background: rgba(248,81,73,0.08);
+  color: var(--accent-red);
+  border: 1px solid rgba(248,81,73,0.15);
+  border-bottom: none;
+}
+.diff-panel-header .meta {
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Diff rendering */
+.diff-container {
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  border-radius: 0 0 6px 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  max-height: 500px;
+  overflow-y: auto;
+}
+.diff-line {
+  padding: 0 12px;
+  white-space: pre;
+  min-height: 20px;
+}
+.diff-add { background: rgba(63,185,80,0.15); color: #aff5b4; }
+.diff-del { background: rgba(248,81,73,0.15); color: #ffa198; }
+.diff-hunk { background: rgba(56,139,253,0.1); color: var(--accent-blue); font-style: italic; }
+.diff-file-header {
+  font-weight: 600;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+.diff-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-family: inherit;
+}
+.diff-truncated {
+  padding: 8px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+}
+.diff-truncated:hover { color: var(--accent-blue); }
+
+/* Narrative */
+.case-narrative {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border);
+}
+.case-narrative strong { color: var(--text-primary); }
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 64px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+.error-banner {
+  background: rgba(248,81,73,0.1);
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .summary-cards { grid-template-columns: 1fr; }
+  .header { flex-direction: column; gap: 4px; }
+  .attempt-matrix { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Discordant Analysis</h1>
+    <a href="index.html">&larr; Back to Dashboard</a>
+  </div>
+
+  <nav class="section-nav">
+    <a href="#section-a">Summary</a>
+    <a href="#section-b">Patterns</a>
+    <a href="#section-c">Case Studies</a>
+    <a href="#section-d">Synthesis</a>
+  </nav>
+
+  <div class="prose" style="margin-bottom:32px; max-width:900px;">
+    <p>Qualitative analysis of instances where <strong>Anthropic</strong> and <strong>GPT</strong> model families
+    diverge on resolution in cursor CLI (zero-turn) mode. All 4 models attempt each of 90 Go instances
+    3 times. A family "solves" an instance if any model in the family resolves it on any attempt (pass@3).</p>
+  </div>
+
+  <div id="content" style="display:none;">
+
+    <!-- Section A -->
+    <section id="section-a">
+      <div class="prose"><h2>A. Summary Statistics</h2></div>
+      <div class="summary-cards" id="solve-rate-cards"></div>
+      <div class="chart-section">
+        <h3>Per-Model Solve Rates (pass@3)</h3>
+        <div id="solve-rate-chart" style="width:100%; height:300px;"></div>
+      </div>
+      <div class="chart-section">
+        <h3>Concordance Breakdown</h3>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">How often do the two model families agree vs. disagree on resolution?</p>
+        <div id="concordance-chart" style="width:100%; height:350px;"></div>
+      </div>
+    </section>
+
+    <!-- Section B -->
+    <section id="section-b">
+      <div class="prose"><h2>B. Behavioral Patterns</h2></div>
+      <div class="stat-grid" id="behavioral-stats"></div>
+      <div class="chart-section">
+        <h3>Patch Size: Winners vs Losers</h3>
+        <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Change lines in the best attempt from the winning vs. losing family on each discordant instance.</p>
+        <div id="patch-size-chart" style="width:100%; height:320px;"></div>
+      </div>
+      <div class="chart-section">
+        <h3>Discordance by Repository</h3>
+        <div id="repo-chart" style="width:100%; height:280px;"></div>
+      </div>
+    </section>
+
+    <!-- Section C -->
+    <section id="section-c">
+      <div class="prose"><h2>C. Case Studies</h2></div>
+      <div id="case-studies-container"></div>
+    </section>
+
+    <!-- Section D -->
+    <section id="section-d">
+      <div class="prose" id="synthesis-text"></div>
+    </section>
+
+  </div>
+
+  <div class="loading" id="loading">Loading analysis data&hellip;</div>
+</div>
+
+<script>
+// ── Constants ──
+
+const ANTHROPIC = ['claude-4.6-opus-max-thinking', 'claude-4.6-sonnet-medium-thinking'];
+const GPT_MODELS = ['gpt-5.3-codex-xhigh', 'gpt-5.4-xhigh'];
+const CLI_MODELS = [...ANTHROPIC, ...GPT_MODELS];
+
+const MODEL_COLORS = {
+  'claude-4.6-sonnet-medium-thinking': '#2dd4bf',
+  'claude-4.6-opus-max-thinking': '#bc8cff',
+  'gpt-5.3-codex-xhigh': '#f97316',
+  'gpt-5.4-xhigh': '#f472b6',
+};
+
+const MODEL_SHORT = {
+  'claude-4.6-opus-max-thinking': 'Opus',
+  'claude-4.6-sonnet-medium-thinking': 'Sonnet',
+  'gpt-5.3-codex-xhigh': 'GPT-5.3',
+  'gpt-5.4-xhigh': 'GPT-5.4',
+};
+
+const MODEL_ORDER = ['gpt-5.4-xhigh', 'gpt-5.3-codex-xhigh', 'claude-4.6-opus-max-thinking', 'claude-4.6-sonnet-medium-thinking'];
+
+const DARK_LAYOUT = {
+  paper_bgcolor: '#161b22',
+  plot_bgcolor: '#161b22',
+  font: { color: '#e6edf3', family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  margin: { t: 30, r: 30, b: 60, l: 120 },
+};
+
+// ── Case Studies (static qualitative data) ──
+
+const CASE_STUDIES = [
+  {
+    id: 'etcd-io__etcd-21757',
+    title: 'Structured logging migration',
+    category: 'anthropic',
+    targetTests: ['TestLog'],
+    winnerModel: 'claude-4.6-sonnet-medium-thinking',
+    winnerAttempt: 1,
+    loserModel: 'gpt-5.4-xhigh',
+    loserAttempt: 0,
+    narrative: 'Both families identified the correct file and function (<code>logInfo</code> in <code>trace.go</code>). The GPT models made the top-level message static (<code>msg := "trace"</code>) and added structured fields — a partial fix. The Anthropic models went further: they also rewrote the per-step format strings to remove the embedded <code>trace[%d]</code> prefix from each step, making the structured logging migration complete. The test required both changes — the static top-level message AND clean step strings — so partial fixes failed.',
+  },
+  {
+    id: 'kubernetes__kubernetes-135513',
+    title: 'Multi-file kubectl apply fix',
+    category: 'anthropic',
+    targetTests: ['TestApplyDryRunClientMergesWithServerState'],
+    winnerModel: 'claude-4.6-opus-max-thinking',
+    winnerAttempt: 0,
+    loserModel: 'gpt-5.4-xhigh',
+    loserAttempt: 0,
+    narrative: 'This required changes across two files (<code>apply.go</code> and <code>patcher.go</code>). Opus was the only model to touch both files, adding dry-run merging logic in the patcher. All other models (including Sonnet) only edited <code>apply.go</code>, missing the patcher-side change needed to make client-side dry-run merge with server state. This is a case where broader context gathering — understanding the full apply pipeline — was decisive.',
+  },
+  {
+    id: 'openshift__hypershift-8216',
+    title: 'Version constant rollback',
+    category: 'anthropic',
+    targetTests: ['TestSupportedVersions'],
+    winnerModel: 'claude-4.6-sonnet-medium-thinking',
+    winnerAttempt: 1,
+    loserModel: 'gpt-5.4-xhigh',
+    loserAttempt: 0,
+    narrative: 'The fix required rolling back <code>LatestSupportedVersion</code> from 5.0 to 4.22 and simplifying the <code>Supported()</code> function to remove cross-major-version logic. The Anthropic models made a clean, focused edit to <code>version.go</code>. The GPT models over-scoped: they also edited <code>test/e2e/util/version.go</code> (removing version constants), which broke the build or introduced regressions. The winning approach was surgical restraint — changing only what was needed.',
+  },
+  {
+    id: 'kubernetes__kubernetes-133097',
+    title: 'PDB eviction error enrichment',
+    category: 'gpt',
+    targetTests: ['TestEviction'],
+    winnerModel: 'gpt-5.4-xhigh',
+    winnerAttempt: 0,
+    loserModel: 'claude-4.6-sonnet-medium-thinking',
+    loserAttempt: 0,
+    narrative: 'The fix required enriching the PDB eviction error message to handle multiple cases: sync failure, insufficient healthy pods, and a generic fallback. The GPT models produced a proper switch statement checking the <code>DisruptionAllowedCondition</code> status. The Anthropic models attempted a simpler two-branch if/else that didn\'t cover the sync-failure case, which was specifically what the test asserted. More thorough case analysis by GPT was the differentiator.',
+  },
+  {
+    id: 'grpc__grpc-go-8929',
+    title: 'gRPC transport stream fix',
+    category: 'gpt',
+    targetTests: ['Test'],
+    winnerModel: 'gpt-5.4-xhigh',
+    winnerAttempt: 0,
+    loserModel: 'claude-4.6-sonnet-medium-thinking',
+    loserAttempt: 0,
+    narrative: 'Both families edited the same two files and produced similar-sized patches. The GPT patches correctly handled stream reset propagation in the HTTP/2 client transport. The Anthropic patches touched similar code paths but introduced compilation errors (Opus failed to compile in all 3 attempts) or made logically incomplete changes (Sonnet\'s one compiling attempt still failed the test). This suggests the GPT models had better understanding of the gRPC transport state machine.',
+  },
+  {
+    id: 'kubernetes__kubernetes-137240',
+    title: 'DRA API conversion function',
+    category: 'gpt',
+    targetTests: ['TestConversionRoundTrip'],
+    winnerModel: 'gpt-5.4-xhigh',
+    winnerAttempt: 0,
+    loserModel: 'claude-4.6-sonnet-medium-thinking',
+    loserAttempt: 0,
+    narrative: 'A DRA (Dynamic Resource Allocation) API conversion function needed updating. Both families edited the same file but the GPT models produced a more complete conversion that handled the specific field mapping the round-trip test required. The Anthropic patches were shorter and missed a field, causing the conversion round-trip to lose data.',
+  },
+];
+
+// ── Synthesis (static qualitative data) ──
+
+const SYNTHESIS_THEMES = [
+  {
+    title: '1. Multi-file scope recognition',
+    body: 'In at least 3 GPT-only wins and 1 Anthropic-only win, the winning model touched more files than the loser. The fix required coordinated changes across multiple call sites or layers. Models that explored more of the codebase before committing to a patch had an advantage. This factor cuts both ways — it explains wins for both families.',
+  },
+  {
+    title: '2. Case completeness in conditional logic',
+    body: 'Several GPT-only wins involved enriching error handling or validation with additional cases. The GPT models tended to produce switch statements or multi-branch conditionals that covered edge cases the tests asserted, while Anthropic models produced simpler two-branch fixes that missed specific conditions. This suggests GPT models more thoroughly analyzed the test expectations before writing the fix.',
+  },
+  {
+    title: '3. Surgical restraint vs over-scoping',
+    body: 'In the Anthropic-only wins, the Anthropic models made focused, minimal changes while GPT models over-scoped — editing additional files or making unnecessary changes that introduced regressions. When the correct fix was narrow, Anthropic\'s tendency toward smaller patches was an advantage.',
+  },
+  {
+    title: '4. Consistency and compilation reliability',
+    body: 'In some discordant instances, Opus failed to compile in all 3 attempts while both GPT models succeeded in all 3. For cursor CLI runs (zero-turn, no iterative debugging), compilation reliability on the first attempt is critical. GPT models showed higher compilation rates in discordant instances overall.',
+  },
+  {
+    title: '5. Grading infrastructure observations',
+    body: 'After correcting for grading non-determinism (identical patches graded differently due to Docker environment flakiness), the directional bias ran against Anthropic models. This has been corrected in the current data, but is worth noting as a source of historical noise in the results.',
+  },
+];
+
+const SYNTHESIS_SUMMARY = 'The GPT models\' advantage in cursor CLI mode is real but narrower than raw numbers suggest. The primary causal factors favoring GPT are (1) more thorough case analysis in conditional logic and (2) higher compilation reliability in zero-turn mode. The primary factors favoring Anthropic are (1) surgical patch scope and (2) multi-file reasoning in specific instances. Neither family has a systematic advantage in code location accuracy — both consistently identify the correct files.';
+
+// ── Utility functions ──
+
+function shortModel(m) { return MODEL_SHORT[m] || m; }
+
+function patchChangeLines(patch) {
+  if (!patch) return 0;
+  return patch.split('\n').filter(l =>
+    (l.startsWith('+') || l.startsWith('-')) &&
+    !l.startsWith('---') && !l.startsWith('+++')
+  ).length;
+}
+
+function patchFiles(patch) {
+  if (!patch) return [];
+  return patch.split('\n')
+    .filter(l => l.startsWith('diff --git'))
+    .map(l => l.split(' b/').pop());
+}
+
+function abbreviatePatch(patch, maxLines) {
+  if (!patch) return '';
+  maxLines = maxLines || 40;
+  const lines = patch.split('\n');
+  const out = [];
+  for (const l of lines) {
+    if (l.startsWith('diff --git')) out.push(l);
+    else if (l.startsWith('@@')) out.push(l);
+    else if ((l.startsWith('+') || l.startsWith('-')) && !l.startsWith('---') && !l.startsWith('+++')) out.push(l);
+  }
+  if (out.length > maxLines) {
+    const rest = out.length - maxLines;
+    return out.slice(0, maxLines).join('\n') + '\n... (' + rest + ' more lines)';
+  }
+  return out.join('\n');
+}
+
+function renderDiff(patch) {
+  if (!patch) return '<div class="diff-empty">No patch generated for this attempt.</div>';
+  const lines = patch.split('\n');
+  const html = lines.map(line => {
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (line.startsWith('diff --git') || line.startsWith('index '))
+      return '<div class="diff-line diff-file-header">' + escaped + '</div>';
+    if (line.startsWith('--- ') || line.startsWith('+++ '))
+      return '<div class="diff-line diff-file-header">' + escaped + '</div>';
+    if (line.startsWith('@@'))
+      return '<div class="diff-line diff-hunk">' + escaped + '</div>';
+    if (line.startsWith('+'))
+      return '<div class="diff-line diff-add">' + escaped + '</div>';
+    if (line.startsWith('-'))
+      return '<div class="diff-line diff-del">' + escaped + '</div>';
+    return '<div class="diff-line">' + escaped + '</div>';
+  }).join('');
+  return '<div class="diff-container">' + html + '</div>';
+}
+
+// ── Core computation ──
+
+function computeAnalysis(data) {
+  const instances = [];
+  const allInstanceIds = Object.keys(data.instances);
+
+  for (const iid of allInstanceIds) {
+    const modelResults = {};
+    let hasCLI = false;
+
+    for (const mid of CLI_MODELS) {
+      const runs = (data.runs[mid] || {})[iid];
+      if (!runs) continue;
+      const cliRuns = runs.filter(r => r.cli);
+      if (!cliRuns.length) continue;
+      hasCLI = true;
+      modelResults[mid] = cliRuns;
+    }
+
+    if (!hasCLI) continue;
+
+    const resolved = {};
+    for (const mid of CLI_MODELS) {
+      if (modelResults[mid]) {
+        resolved[mid] = modelResults[mid].some(r => r.r);
+      }
+    }
+
+    const anthSolved = ANTHROPIC.some(m => resolved[m]);
+    const gptSolved = GPT_MODELS.some(m => resolved[m]);
+
+    let category;
+    if (anthSolved && gptSolved) category = 'both';
+    else if (!anthSolved && !gptSolved) category = 'neither';
+    else if (gptSolved) category = 'gpt_only';
+    else category = 'anth_only';
+
+    instances.push({
+      id: iid,
+      repo: data.instances[iid].repo,
+      modelResults,
+      resolved,
+      anthSolved,
+      gptSolved,
+      category,
+    });
+  }
+
+  // Per-model solve rates
+  const perModel = {};
+  for (const mid of CLI_MODELS) {
+    let solved = 0, total = 0;
+    for (const inst of instances) {
+      if (inst.resolved[mid] !== undefined) {
+        total++;
+        if (inst.resolved[mid]) solved++;
+      }
+    }
+    perModel[mid] = { solved, total, rate: total ? solved / total : 0 };
+  }
+
+  // Concordance
+  const concordance = { both: 0, neither: 0, gpt_only: 0, anth_only: 0 };
+  for (const inst of instances) concordance[inst.category]++;
+
+  // Discordant instances
+  const discordant = instances.filter(i => i.category === 'gpt_only' || i.category === 'anth_only');
+
+  // Behavioral: patch sizes
+  const winnerSizes = [];
+  const loserSizes = [];
+  for (const inst of discordant) {
+    const winFamily = inst.category === 'anth_only' ? ANTHROPIC : GPT_MODELS;
+    const loseFamily = inst.category === 'anth_only' ? GPT_MODELS : ANTHROPIC;
+
+    // Best winning attempt
+    let bestWin = null;
+    for (const m of winFamily) {
+      if (!inst.modelResults[m]) continue;
+      for (const r of inst.modelResults[m]) {
+        if (r.r) { bestWin = r; break; }
+      }
+      if (bestWin) break;
+    }
+
+    // Best losing attempt
+    let bestLose = null;
+    let bestLoseScore = -1;
+    for (const m of loseFamily) {
+      if (!inst.modelResults[m]) continue;
+      for (const r of inst.modelResults[m]) {
+        const score = r.f2p ? r.f2p.filter(t => t.p).length : 0;
+        if (score > bestLoseScore || (score === bestLoseScore && r.patch && (!bestLose || !bestLose.patch))) {
+          bestLose = r;
+          bestLoseScore = score;
+        }
+      }
+    }
+
+    if (bestWin && bestWin.patch) winnerSizes.push(patchChangeLines(bestWin.patch));
+    if (bestLose && bestLose.patch) loserSizes.push(patchChangeLines(bestLose.patch));
+  }
+
+  // Partial credit
+  let zeroTests = 0, partialTests = 0, totalLosing = 0;
+  for (const inst of discordant) {
+    const loseFamily = inst.category === 'anth_only' ? GPT_MODELS : ANTHROPIC;
+    for (const m of loseFamily) {
+      if (!inst.modelResults[m]) continue;
+      totalLosing++;
+      const bestRun = inst.modelResults[m].reduce((best, r) => {
+        const score = r.f2p ? r.f2p.filter(t => t.p).length : 0;
+        const bestScore = best.f2p ? best.f2p.filter(t => t.p).length : 0;
+        return score > bestScore ? r : best;
+      }, inst.modelResults[m][0]);
+      const passes = bestRun.f2p ? bestRun.f2p.filter(t => t.p).length : 0;
+      const total = bestRun.f2p ? bestRun.f2p.length : 0;
+      if (passes === 0 || total === 0) zeroTests++;
+      else if (passes < total) partialTests++;
+    }
+  }
+
+  // Intra-family consistency
+  let anthBothFail = 0, anthGPTOnlyTotal = 0;
+  let gptBothFail = 0, gptAnthOnlyTotal = 0;
+  for (const inst of discordant) {
+    if (inst.category === 'gpt_only') {
+      anthGPTOnlyTotal++;
+      const a1 = inst.resolved[ANTHROPIC[0]];
+      const a2 = inst.resolved[ANTHROPIC[1]];
+      if (a1 === false && a2 === false) anthBothFail++;
+    }
+    if (inst.category === 'anth_only') {
+      gptAnthOnlyTotal++;
+      const g1 = inst.resolved[GPT_MODELS[0]];
+      const g2 = inst.resolved[GPT_MODELS[1]];
+      if (g1 === false && g2 === false) gptBothFail++;
+    }
+  }
+
+  // Repo breakdown
+  const repoBreakdown = {};
+  for (const inst of discordant) {
+    const repo = inst.repo;
+    if (!repoBreakdown[repo]) repoBreakdown[repo] = { gpt_only: 0, anth_only: 0 };
+    repoBreakdown[repo][inst.category]++;
+  }
+
+  // Winner/loser multi-file scope
+  let winnerMultiFile = 0, winnerTotal = 0;
+  let loserMultiFile = 0, loserTotal = 0;
+  for (const inst of discordant) {
+    const winFamily = inst.category === 'anth_only' ? ANTHROPIC : GPT_MODELS;
+    const loseFamily = inst.category === 'anth_only' ? GPT_MODELS : ANTHROPIC;
+    for (const m of winFamily) {
+      if (!inst.modelResults[m]) continue;
+      const resolved = inst.modelResults[m].find(r => r.r);
+      if (resolved && resolved.patch) {
+        winnerTotal++;
+        if (patchFiles(resolved.patch).length > 1) winnerMultiFile++;
+        break;
+      }
+    }
+    for (const m of loseFamily) {
+      if (!inst.modelResults[m]) continue;
+      const best = inst.modelResults[m].reduce((a, b) => {
+        const sa = a.patch ? patchChangeLines(a.patch) : 0;
+        const sb = b.patch ? patchChangeLines(b.patch) : 0;
+        return sb > sa ? b : a;
+      }, inst.modelResults[m][0]);
+      if (best && best.patch) {
+        loserTotal++;
+        if (patchFiles(best.patch).length > 1) loserMultiFile++;
+      }
+    }
+  }
+
+  return {
+    instances,
+    perModel,
+    concordance,
+    discordant,
+    winnerSizes,
+    loserSizes,
+    partialCredit: { zeroTests, partialTests, totalLosing },
+    intraFamily: { anthBothFail, anthGPTOnlyTotal, gptBothFail, gptAnthOnlyTotal },
+    repoBreakdown,
+    scope: { winnerMultiFile, winnerTotal, loserMultiFile, loserTotal },
+  };
+}
+
+// ── Render: Section A ──
+
+function renderSolveRateCards(analysis) {
+  const el = document.getElementById('solve-rate-cards');
+  el.innerHTML = MODEL_ORDER.map(m => {
+    const s = analysis.perModel[m];
+    const color = MODEL_COLORS[m];
+    return '<div class="summary-card">' +
+      '<div class="model-name" style="color:' + color + '">' + shortModel(m) + '</div>' +
+      '<div class="primary-metric" style="color:' + color + '">' + (s.rate * 100).toFixed(1) + '%</div>' +
+      '<div class="primary-label">' + s.solved + '/' + s.total + ' instances (pass@3)</div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderSolveRateChart(analysis) {
+  const models = [...MODEL_ORDER].reverse();
+  const trace = {
+    y: models.map(m => shortModel(m)),
+    x: models.map(m => analysis.perModel[m].rate * 100),
+    type: 'bar',
+    orientation: 'h',
+    marker: {
+      color: models.map(m => MODEL_COLORS[m]),
+      line: { width: 0 },
+    },
+    text: models.map(m => {
+      const s = analysis.perModel[m];
+      return s.solved + '/' + s.total + ' (' + (s.rate * 100).toFixed(1) + '%)';
+    }),
+    textposition: 'outside',
+    textfont: { color: '#e6edf3', size: 13 },
+    hovertemplate: '<b>%{y}</b><br>%{x:.1f}% resolve rate<extra></extra>',
+  };
+
+  const layout = {
+    ...DARK_LAYOUT,
+    xaxis: {
+      title: 'Solve Rate (%)',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+      range: [0, 100],
+    },
+    yaxis: { gridcolor: '#21262d' },
+    showlegend: false,
+    margin: { ...DARK_LAYOUT.margin, l: 80 },
+  };
+
+  Plotly.react('solve-rate-chart', [trace], layout, { responsive: true, displayModeBar: false });
+}
+
+function renderConcordanceChart(analysis) {
+  const c = analysis.concordance;
+  const trace = {
+    type: 'treemap',
+    labels: [
+      'Both Solve (' + c.both + ')',
+      'Neither Solves (' + c.neither + ')',
+      'GPT Only (' + c.gpt_only + ')',
+      'Anthropic Only (' + c.anth_only + ')',
+    ],
+    parents: ['', '', '', ''],
+    values: [c.both, c.neither, c.gpt_only, c.anth_only],
+    marker: {
+      colors: ['#3fb950', '#484f58', '#f97316', '#bc8cff'],
+      line: { width: 2, color: '#0d1117' },
+    },
+    textinfo: 'label+value',
+    textfont: { size: 16, color: '#fff' },
+    hovertemplate: '<b>%{label}</b><br>%{value} instances (%{percentRoot:.0%})<extra></extra>',
+  };
+
+  const layout = {
+    ...DARK_LAYOUT,
+    margin: { t: 10, r: 10, b: 10, l: 10 },
+  };
+
+  Plotly.react('concordance-chart', [trace], layout, { responsive: true, displayModeBar: false });
+}
+
+// ── Render: Section B ──
+
+function renderBehavioralStats(analysis) {
+  const el = document.getElementById('behavioral-stats');
+  const pc = analysis.partialCredit;
+  const fam = analysis.intraFamily;
+  const sc = analysis.scope;
+
+  el.innerHTML = [
+    {
+      value: analysis.discordant.length,
+      label: 'Discordant Instances',
+      detail: analysis.concordance.gpt_only + ' GPT-only, ' + analysis.concordance.anth_only + ' Anthropic-only',
+    },
+    {
+      value: Math.round(pc.zeroTests / pc.totalLosing * 100) + '%',
+      label: 'Zero Partial Credit',
+      detail: pc.zeroTests + '/' + pc.totalLosing + ' losing models got 0 tests passing',
+    },
+    {
+      value: fam.anthBothFail + '/' + fam.anthGPTOnlyTotal,
+      label: 'Anthropic Both Fail',
+      detail: 'Both Anthropic models fail together on GPT-only wins',
+    },
+    {
+      value: sc.winnerMultiFile + '/' + sc.winnerTotal,
+      label: 'Winners Multi-File',
+      detail: 'Winning patches touching multiple files',
+    },
+  ].map(s =>
+    '<div class="stat-box">' +
+      '<div class="stat-value">' + s.value + '</div>' +
+      '<div class="stat-label">' + s.label + '</div>' +
+      '<div class="stat-detail">' + s.detail + '</div>' +
+    '</div>'
+  ).join('');
+}
+
+function renderPatchSizeChart(analysis) {
+  const traces = [
+    {
+      y: analysis.winnerSizes,
+      type: 'box',
+      name: 'Winners',
+      marker: { color: '#3fb950' },
+      boxpoints: 'all',
+      jitter: 0.4,
+      pointpos: 0,
+    },
+    {
+      y: analysis.loserSizes,
+      type: 'box',
+      name: 'Losers',
+      marker: { color: '#8b949e' },
+      boxpoints: 'all',
+      jitter: 0.4,
+      pointpos: 0,
+    },
+  ];
+
+  const layout = {
+    ...DARK_LAYOUT,
+    yaxis: {
+      title: 'Change Lines',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+    },
+    xaxis: { gridcolor: '#21262d' },
+    showlegend: true,
+    legend: { orientation: 'h', y: -0.15, font: { color: '#e6edf3' } },
+    margin: { t: 20, r: 30, b: 60, l: 70 },
+  };
+
+  Plotly.react('patch-size-chart', traces, layout, { responsive: true, displayModeBar: false });
+}
+
+function renderRepoChart(analysis) {
+  const repos = Object.entries(analysis.repoBreakdown)
+    .sort((a, b) => (b[1].gpt_only + b[1].anth_only) - (a[1].gpt_only + a[1].anth_only));
+
+  const repoNames = repos.map(r => r[0].split('/')[1]);
+  const gptCounts = repos.map(r => r[1].gpt_only);
+  const anthCounts = repos.map(r => r[1].anth_only);
+
+  const traces = [
+    {
+      y: repoNames.reverse(),
+      x: gptCounts.reverse(),
+      type: 'bar',
+      orientation: 'h',
+      name: 'GPT-only wins',
+      marker: { color: '#f97316' },
+    },
+    {
+      y: repoNames,
+      x: anthCounts.reverse(),
+      type: 'bar',
+      orientation: 'h',
+      name: 'Anthropic-only wins',
+      marker: { color: '#bc8cff' },
+    },
+  ];
+
+  const layout = {
+    ...DARK_LAYOUT,
+    barmode: 'stack',
+    xaxis: {
+      title: 'Discordant Instances',
+      gridcolor: '#21262d',
+      zerolinecolor: '#30363d',
+      dtick: 2,
+    },
+    yaxis: { gridcolor: '#21262d' },
+    legend: { orientation: 'h', y: -0.2, font: { color: '#e6edf3' } },
+    margin: { t: 20, r: 30, b: 60, l: 120 },
+  };
+
+  Plotly.react('repo-chart', traces, layout, { responsive: true, displayModeBar: false });
+}
+
+// ── Render: Section C ──
+
+function renderAttemptMatrix(data, instanceId) {
+  const modelOrder = [
+    'claude-4.6-opus-max-thinking',
+    'claude-4.6-sonnet-medium-thinking',
+    'gpt-5.3-codex-xhigh',
+    'gpt-5.4-xhigh',
+  ];
+
+  let html = '<div class="attempt-matrix">';
+  html += '<div class="am-header"></div>';
+  html += '<div class="am-header">a=0</div>';
+  html += '<div class="am-header">a=1</div>';
+  html += '<div class="am-header">a=2</div>';
+
+  for (const mid of modelOrder) {
+    const color = MODEL_COLORS[mid];
+    html += '<div class="am-model" style="color:' + color + '">' + shortModel(mid) + '</div>';
+    const runs = (data.runs[mid] || {})[instanceId] || [];
+    for (let a = 0; a < 3; a++) {
+      const run = runs.find(r => r.a === a);
+      if (!run) {
+        html += '<div class="am-cell" style="color:var(--text-secondary)">--</div>';
+      } else if (run.r) {
+        html += '<div class="am-cell pass">PASS</div>';
+      } else if (!run.c) {
+        html += '<div class="am-cell nocompile">no compile</div>';
+      } else {
+        const f2pPassed = run.f2p ? run.f2p.filter(t => t.p).length : 0;
+        const f2pTotal = run.f2p ? run.f2p.length : 0;
+        if (f2pPassed > 0 && f2pPassed < f2pTotal) {
+          html += '<div class="am-cell partial">partial (' + f2pPassed + '/' + f2pTotal + ')</div>';
+        } else {
+          html += '<div class="am-cell fail">FAIL</div>';
+        }
+      }
+    }
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function renderCaseStudies(data, analysis) {
+  const container = document.getElementById('case-studies-container');
+  const html = CASE_STUDIES.map(cs => {
+    const repo = data.instances[cs.id] ? data.instances[cs.id].repo : cs.id.split('__')[0].replace(/-/g, '/');
+    const categoryLabel = cs.category === 'anthropic' ? 'Anthropic wins' : 'GPT wins';
+    const categoryClass = cs.category;
+
+    // Get patches
+    const winRuns = (data.runs[cs.winnerModel] || {})[cs.id] || [];
+    const loseRuns = (data.runs[cs.loserModel] || {})[cs.id] || [];
+    const winRun = winRuns.find(r => r.a === cs.winnerAttempt);
+    const loseRun = loseRuns.find(r => r.a === cs.loserAttempt);
+
+    const winPatch = winRun ? winRun.patch : null;
+    const losePatch = loseRun ? loseRun.patch : null;
+
+    const winFiles = patchFiles(winPatch);
+    const loseFiles = patchFiles(losePatch);
+    const winLines = patchChangeLines(winPatch);
+    const loseLines = patchChangeLines(losePatch);
+
+    const winAbbrev = abbreviatePatch(winPatch, 40);
+    const loseAbbrev = abbreviatePatch(losePatch, 40);
+
+    return '<div class="case-study-card">' +
+      '<div class="case-study-header">' +
+        '<span class="instance-id">' + cs.id.replace('__', '/').replace(/-(\d+)$/, '#$1') + '</span>' +
+        '<h4>' + cs.title + '</h4>' +
+        '<span class="tag">' + repo + '</span>' +
+        '<span class="category-badge ' + categoryClass + '">' + categoryLabel + '</span>' +
+      '</div>' +
+      '<div class="case-study-body">' +
+        '<div class="case-study-target">Target tests: ' + cs.targetTests.map(t => '<code>' + t + '</code>').join(', ') + '</div>' +
+        renderAttemptMatrix(data, cs.id) +
+        '<div class="diff-panels">' +
+          '<div class="diff-panel">' +
+            '<div class="diff-panel-header winner">' +
+              'Winning Patch ' +
+              '<span class="meta">(' + shortModel(cs.winnerModel) + ', ' + winFiles.length + ' file(s), ' + winLines + ' change lines)</span>' +
+            '</div>' +
+            renderDiff(winAbbrev) +
+          '</div>' +
+          '<div class="diff-panel">' +
+            '<div class="diff-panel-header loser">' +
+              'Losing Patch ' +
+              '<span class="meta">(' + shortModel(cs.loserModel) + ', ' + loseFiles.length + ' file(s), ' + loseLines + ' change lines)</span>' +
+            '</div>' +
+            renderDiff(loseAbbrev) +
+          '</div>' +
+        '</div>' +
+        '<div class="case-narrative">' + cs.narrative + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  container.innerHTML = html;
+}
+
+// ── Render: Section D ──
+
+function renderSynthesis() {
+  const el = document.getElementById('synthesis-text');
+  let html = '<h2>D. Causal Factor Synthesis</h2>';
+  html += '<p>Across the discordant instances, several recurring themes explain why one model family succeeds where the other fails:</p>';
+
+  for (const theme of SYNTHESIS_THEMES) {
+    html += '<h3>' + theme.title + '</h3>';
+    html += '<p>' + theme.body + '</p>';
+  }
+
+  html += '<h3>Summary</h3>';
+  html += '<p>' + SYNTHESIS_SUMMARY + '</p>';
+
+  el.innerHTML = html;
+}
+
+// ── Init ──
+
+async function init() {
+  try {
+    const resp = await fetch('data.json');
+    if (!resp.ok) throw new Error('Failed to load data.json: ' + resp.status);
+    const data = await resp.json();
+
+    const analysis = computeAnalysis(data);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    renderSolveRateCards(analysis);
+    renderSolveRateChart(analysis);
+    renderConcordanceChart(analysis);
+    renderBehavioralStats(analysis);
+    renderPatchSizeChart(analysis);
+    renderRepoChart(analysis);
+    renderCaseStudies(data, analysis);
+    renderSynthesis();
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      '<div class="error-banner">Error: ' + err.message + '</div>';
+    console.error(err);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

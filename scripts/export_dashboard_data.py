@@ -46,8 +46,10 @@ def main() -> None:
     parser.add_argument("--output", default=str(ROOT / "docs" / "data.json"))
     args = parser.parse_args()
 
+    EXCLUDED_MODELS = {"claude-haiku-4-5@20251001"}
+
     store = FileStore(args.db)
-    records = store.list_all()
+    records = [r for r in store.list_all() if r.model_id not in EXCLUDED_MODELS]
 
     inst_by_id = {}
     for path in args.instances:
