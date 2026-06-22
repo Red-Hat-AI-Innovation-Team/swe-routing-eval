@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import textwrap
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -144,19 +143,19 @@ def best_attempt(runs: list[RunRecord]) -> RunRecord:
 
 def patch_files(patch: str) -> list[str]:
     return [
-        l.split(" b/")[-1]
-        for l in patch.splitlines()
-        if l.startswith("diff --git")
+        line.split(" b/")[-1]
+        for line in patch.splitlines()
+        if line.startswith("diff --git")
     ]
 
 
 def patch_change_lines(patch: str) -> int:
     return sum(
         1
-        for l in patch.splitlines()
-        if (l.startswith("+") or l.startswith("-"))
-        and not l.startswith("---")
-        and not l.startswith("+++")
+        for line in patch.splitlines()
+        if (line.startswith("+") or line.startswith("-"))
+        and not line.startswith("---")
+        and not line.startswith("+++")
     )
 
 
@@ -164,14 +163,14 @@ def abbreviate_patch(patch: str, max_lines: int = 40) -> str:
     """Show only the meaningful change lines from a patch, capped."""
     lines = patch.splitlines()
     out = []
-    for l in lines:
-        if l.startswith("diff --git"):
-            out.append(l)
-        elif l.startswith("@@"):
-            out.append(l)
-        elif l.startswith("+") or l.startswith("-"):
-            if not l.startswith("---") and not l.startswith("+++"):
-                out.append(l)
+    for line in lines:
+        if line.startswith("diff --git"):
+            out.append(line)
+        elif line.startswith("@@"):
+            out.append(line)
+        elif line.startswith("+") or line.startswith("-"):
+            if not line.startswith("---") and not line.startswith("+++"):
+                out.append(line)
     if len(out) > max_lines:
         out = out[:max_lines] + [f"... ({len(out) - max_lines} more lines)"]
     return "\n".join(out)
@@ -195,7 +194,10 @@ def section_summary(analyses: list[InstanceAnalysis], inconsistent: dict) -> str
     out.append("### Per-model solve rates (pass@3)\n")
     out.append("| Model | Solved | Rate |")
     out.append("|-------|--------|------|")
-    for mid in sorted(ALL_MODELS, key=lambda x: (-sum(1 for a in analyses if a.resolved_by.get(x)), x)):
+    for mid in sorted(
+        ALL_MODELS,
+        key=lambda x: (-sum(1 for a in analyses if a.resolved_by.get(x)), x),
+    ):
         solved = sum(1 for a in analyses if a.resolved_by.get(mid))
         out.append(f"| {SHORT[mid]} | {solved}/{total} | {100*solved/total:.1f}% |")
     out.append("")
@@ -395,7 +397,10 @@ def section_behavioral(
         repo_totals[a.repo] += 1
     for a in discordant:
         repo_counts[a.repo][a.winner_family] += 1
-    for repo in sorted(repo_totals, key=lambda r: -(repo_counts[r]["GPT"] + repo_counts[r]["Anthropic"])):
+    for repo in sorted(
+        repo_totals,
+        key=lambda r: -(repo_counts[r]["GPT"] + repo_counts[r]["Anthropic"]),
+    ):
         g = repo_counts[repo]["GPT"]
         an = repo_counts[repo]["Anthropic"]
         if g or an:
@@ -622,14 +627,6 @@ def _narrative(
 def section_synthesis(analyses: list[InstanceAnalysis], inconsistent: dict) -> str:
     out = []
     out.append("## D. Causal Factor Synthesis\n")
-
-    discordant = [
-        a
-        for a in analyses
-        if a.discordant and a.instance_id not in inconsistent
-    ]
-    gpt_wins = [a for a in discordant if a.winner_family == "GPT"]
-    anth_wins = [a for a in discordant if a.winner_family == "Anthropic"]
 
     out.append(
         "Across the real (non-grading-bug) discordant instances, "
