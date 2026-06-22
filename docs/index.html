@@ -860,6 +860,7 @@ function makeFilterGroup(label, options, selected, onChange) {
 
   const dd = document.createElement('div');
   dd.className = 'filter-dropdown';
+  dd.onclick = e => e.stopPropagation();
   options.forEach(opt => {
     const lbl = document.createElement('label');
     const cb = document.createElement('input');
