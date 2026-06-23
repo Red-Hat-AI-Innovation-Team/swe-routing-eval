@@ -87,7 +87,9 @@ def _message_to_anthropic(msg: Message) -> dict[str, Any]:
         }
 
     # plain text (user or assistant)
-    return {"role": msg.role, "content": msg.content or ""}
+    if msg.content is None:
+        raise ValueError(f"Message with role={msg.role!r} has no content and no tool data")
+    return {"role": msg.role, "content": msg.content}
 
 
 # -- tool translation ---------------------------------------------------------
