@@ -9,15 +9,16 @@ from anthropic.types import ToolUseBlock
 
 from swe_routing_eval.llm.base import LLMClient
 from swe_routing_eval.llm.types import LLMResponse, Message, ToolCall, ToolDef
+from swe_routing_eval.vertex import VertexConfig
 
 
 class AnthropicVertexClient(LLMClient):
     """LLMClient backed by Anthropic's Vertex AI Model Garden."""
 
-    def __init__(self, project_id: str, region: str) -> None:
+    def __init__(self, config: VertexConfig) -> None:
         self._client = anthropic.AnthropicVertex(
-            project_id=project_id,
-            region=region,
+            project_id=config.project_id,
+            region=config.region,
         )
 
     def chat(
@@ -31,7 +32,7 @@ class AnthropicVertexClient(LLMClient):
         response = self._client.messages.create(
             model=model_id,
             max_tokens=max_tokens,
-            system=system or anthropic.NOT_GIVEN,
+            system=system or anthropic.NOT_GIVEN,  # type: ignore[arg-type]
             tools=[_tool_def_to_anthropic(td) for td in tools],  # type: ignore[misc]
             messages=api_messages,  # type: ignore[arg-type]
         )

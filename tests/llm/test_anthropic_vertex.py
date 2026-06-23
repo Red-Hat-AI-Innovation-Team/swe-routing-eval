@@ -15,6 +15,7 @@ from swe_routing_eval.llm.anthropic_vertex import (
     _tool_def_to_anthropic,
 )
 from swe_routing_eval.llm.types import Message, ToolCall, ToolDef, ToolResult
+from swe_routing_eval.vertex import VertexConfig
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +245,11 @@ def test_chat_wires_translation_and_parsing() -> None:
         mock_client_instance.messages.create.return_value = mock_anthropic_resp
         mock_mod.NOT_GIVEN = None
 
-        client = AnthropicVertexClient(project_id="proj", region="us-east5")
+        config = VertexConfig(
+            project_id="proj", region="us-east5",
+            opus_model_id="", sonnet_model_id="", haiku_model_id="",
+        )
+        client = AnthropicVertexClient(config)
         result = client.chat(
             model_id="claude-sonnet-4-6-20251001",
             messages=[
