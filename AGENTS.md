@@ -6,7 +6,7 @@
 uv pip install -e ".[dev]"   # install (requires Python >=3.12)
 uv run ruff check .          # lint
 uv run mypy src/             # typecheck (strict mode)
-uv run pytest tests/         # 194 tests, ~15s
+uv run pytest tests/         # 211 tests, ~15s
 ```
 
 `pyproject.toml` lists `pytest-xdist` but `-n auto` only works after the full `.[dev]` install. Safe to omit it — the suite is fast enough single-threaded.
@@ -23,12 +23,16 @@ src/swe_routing_eval/
   budget.py        # dry_run_estimate()
   store.py         # RunRecord, FileStore (SQLite), Store ABC
   grading.py       # Grader Protocol, safe_grade pipeline, anti-reward-hacking
-  scaffold.py      # Fixed agent scaffold (Anthropic Vertex + Cursor CLI)
+  scaffold.py      # Model-agnostic agent scaffold (LLMClient + Cursor CLI)
   orchestrator.py  # Sweep scheduler with resume, budget guard, circuit breaker
   stats.py         # bootstrap_ci, mcnemar_test, connor_power
   frontier.py      # Pareto frontier, memo renderer, plot
   cursor_usage.py  # Cursor dashboard API client for GPT cost tracking
   parser.py        # GoJSONParser Protocol stub (blocked on SWE-benchify issue #2)
+  llm/             # Provider-agnostic LLM client abstraction
+    types.py       # ToolDef, ToolCall, ToolResult, Message, LLMResponse dataclasses
+    base.py        # LLMClient ABC: chat(model_id, messages, tools, max_tokens)
+    anthropic_vertex.py  # AnthropicVertexClient(VertexConfig) — message/tool translation
 
 scripts/           # CLI entry points — not importable modules
   eval_sweep.py    # Main sweep runner (--dry-run or full)
@@ -46,7 +50,9 @@ docs/              # GitHub Pages dashboard + design docs
 
 - **Scripts use `importlib.util` to load other scripts.** Tests for `m0_coverage_check.py`, `eval_sweep.py`, `analyze_runs.py`, and `spot_audit.py` import `main()` via `spec_from_file_location`, not normal imports. Don't move scripts or change their `main()` signatures without updating the corresponding tests.
 
-- **Two scaffold implementations.** `Scaffold` (Anthropic Vertex API) and `CLIScaffold` (Cursor `agent` CLI). The orchestrator picks based on whether the tier is in `VERTEX_TIERS` (`vertex.py:16`). Non-Vertex tiers route to `CLIScaffold`.
+- **Two scaffold implementations.** `Scaffold` (model-agnostic, takes `LLMClient`) and `CLIScaffold` (Cursor `agent` CLI). The orchestrator picks based on whether the tier is in `VERTEX_TIERS` (`vertex.py:16`). Non-Vertex tiers route to `CLIScaffold`. `Scaffold` receives its `LLMClient` via composition — currently `AnthropicVertexClient(VertexConfig)` is the only implementation.
+
+- **LLMClient abstraction.** `scaffold.py` no longer imports `anthropic` or `VertexConfig`. All provider-specific logic lives in `llm/anthropic_vertex.py`. Each `LLMClient` translates `Message`/`ToolDef` to provider format, calls the API, and normalizes the response to `LLMResponse`. System messages are extracted from the message list by the client (Anthropic uses a separate `system=` param).
 
 - **`product` field is always overwritten.** `SWEbenchInstance._product_from_repo` (`ingest.py:67-69`) sets `product = self.repo` regardless of input. Downstream code (stats, frontier, dashboard) groups by `product` as the segment key — it's effectively the `owner/repo` string.
 
@@ -72,6 +78,7 @@ The grader has two implementations: `SwebenchifyGrader` (importable library, def
 - `tmp_path` for all SQLite store tests.
 - `monkeypatch` for Vertex env vars.
 - Script tests import `main()` and call it with argv lists, not via subprocess.
+- `tests/llm/` — tests for LLMClient implementations (translation layers, response parsing).
 
 ## Style and CI
 
