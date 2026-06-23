@@ -1,15 +1,12 @@
 """Manual smoke test for AnthropicVertexClient."""
 
-import os
-
-from swe_routing_eval.llm import AnthropicVertexClient, Message, ToolCall, ToolDef, ToolResult
+from swe_routing_eval.llm import AnthropicVertexClient, Message, ToolDef, ToolResult
+from swe_routing_eval.vertex import VertexConfig
 
 MODEL = "claude-sonnet-4-6@default"
 
-client = AnthropicVertexClient(
-    project_id=os.environ["ANTHROPIC_VERTEX_PROJECT_ID"],
-    region=os.environ["CLOUD_ML_REGION"],
-)
+config = VertexConfig.from_env()
+client = AnthropicVertexClient(config)
 
 # -- simple tool def ----------------------------------------------------------
 
@@ -48,7 +45,9 @@ if r1.tool_calls:
     messages.append(Message(role="assistant", content=r1.content, tool_calls=r1.tool_calls))
     messages.append(Message(
         role="user",
-        tool_results=[ToolResult(tool_call_id=tc.id, content='{"temp_c": 22, "condition": "sunny"}')],
+        tool_results=[
+            ToolResult(tool_call_id=tc.id, content='{"temp_c": 22, "condition": "sunny"}'),
+        ],
     ))
 
     print("\n=== Turn 2 ===")

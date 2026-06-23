@@ -15,8 +15,7 @@ from swe_routing_eval.llm.anthropic_vertex import (
     _tool_def_to_anthropic,
 )
 from swe_routing_eval.llm.types import Message, ToolCall, ToolDef, ToolResult
-from swe_routing_eval.vertex import VertexConfig
-
+from swe_routing_eval.vertex import VertexConfig  # noqa: I001
 
 # ---------------------------------------------------------------------------
 # _split_system
