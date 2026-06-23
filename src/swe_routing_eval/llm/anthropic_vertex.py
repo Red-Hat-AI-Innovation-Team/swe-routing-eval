@@ -49,7 +49,8 @@ def _split_system(
     api_messages: list[dict[str, Any]] = []
     for msg in messages:
         if msg.role == "system":
-            system_parts.append(msg.content)
+            if msg.content:
+                system_parts.append(msg.content)
         else:
             api_messages.append(_message_to_anthropic(msg))
     return "\n\n".join(system_parts), api_messages
