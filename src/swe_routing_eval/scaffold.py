@@ -16,14 +16,10 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-import anthropic
-from anthropic.types import ToolUseBlock
 
 from swe_routing_eval.cursor_usage import CursorUsageClient, sum_events
 from swe_routing_eval.ingest import SWEbenchInstance
-from swe_routing_eval.vertex import VertexConfig
+from swe_routing_eval.llm import LLMClient, Message, ToolDef, ToolResult
 
 SCAFFOLD_VERSION = "v0.1.0"
 
@@ -48,29 +44,29 @@ Rules:
 """
 
 # Tool definitions are fixed and identical across all model tiers.
-TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "bash",
-        "description": (
+TOOLS: list[ToolDef] = [
+    ToolDef(
+        name="bash",
+        description=(
             "Run a shell command in the repository working directory. "
             "Returns combined stdout and stderr (truncated to 8 000 chars)."
         ),
-        "input_schema": {
+        parameters={
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "Shell command to execute."}
             },
             "required": ["command"],
         },
-    },
-    {
-        "name": "finish",
-        "description": (
+    ),
+    ToolDef(
+        name="finish",
+        description=(
             "Submit your patch. Call this when you have finished making changes. "
             "The patch is captured automatically via `git diff HEAD`."
         ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
+        parameters={"type": "object", "properties": {}, "required": []},
+    ),
 ]
 
 _BASH_TIMEOUT_S = 120
@@ -94,14 +90,14 @@ class AttemptResult:
 
 
 class Scaffold:
-    """Anthropic-Vertex-backed fixed scaffold (issues #8, #9).
+    """Model-agnostic fixed scaffold (issues #8, #9).
 
-    Uses AnthropicVertex with the pinned model ID from VertexConfig.
     System prompt, tools, and max_turns are constants in this module.
+    The LLMClient handles all provider-specific translation.
     """
 
-    def __init__(self, config: VertexConfig) -> None:
-        self._config = config
+    def __init__(self, llm: LLMClient) -> None:
+        self._llm = llm
 
     def run(
         self,
@@ -115,21 +111,17 @@ class Scaffold:
         Args:
             instance: The SWE-bench instance to fix.
             workspace_dir: Repo checked out at base_commit; commands run here.
-            model_id: Pinned Vertex Model Garden ID — recorded verbatim in telemetry.
+            model_id: Model ID — recorded verbatim in telemetry.
             seed: Logged for reproducibility; not sent to the API.
 
         Returns:
             AttemptResult with the candidate patch (git diff HEAD) and telemetry.
         """
-        client = anthropic.AnthropicVertex(
-            project_id=self._config.project_id,
-            region=self._config.region,
-        )
-        return _run_loop(client, instance, workspace_dir, model_id, seed)
+        return _run_loop(self._llm, instance, workspace_dir, model_id, seed)
 
 
 def _run_loop(
-    client: anthropic.AnthropicVertex,
+    llm: LLMClient,
     instance: SWEbenchInstance,
     workspace_dir: Path,
     model_id: str,
@@ -137,68 +129,67 @@ def _run_loop(
 ) -> AttemptResult:
     """Inner agent loop — separated to make the client injectable in tests."""
     start = time.monotonic()
-    messages: list[dict[str, Any]] = [
-        {
-            "role": "user",
-            "content": (
+    messages: list[Message] = [
+        Message(role="system", content=SYSTEM_PROMPT),
+        Message(
+            role="user",
+            content=(
                 f"Repository: {instance.repo}\n\n"
                 f"Problem statement:\n{instance.problem_statement}"
             ),
-        }
+        ),
     ]
 
-    tokens_in = tokens_out = turns = tool_calls = 0
+    tokens_in = tokens_out = turns = tool_call_count = 0
     candidate_patch = ""
 
     for _ in range(MAX_TURNS):
-        response = client.messages.create(
-            model=model_id,
+        response = llm.chat(
+            model_id=model_id,
+            messages=messages,
+            tools=TOOLS,
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,  # type: ignore[arg-type]
-            messages=messages,  # type: ignore[arg-type]
         )
-        tokens_in += response.usage.input_tokens
-        tokens_out += response.usage.output_tokens
+        tokens_in += response.tokens_in
+        tokens_out += response.tokens_out
         turns += 1
 
-        if response.stop_reason == "end_turn":
+        if response.finished:
             candidate_patch = _git_diff(workspace_dir)
             break
 
-        tool_results: list[dict[str, Any]] = []
+        if not response.tool_calls:
+            # No tool use and not finished — stop gracefully
+            candidate_patch = _git_diff(workspace_dir)
+            break
+
+        tool_results: list[ToolResult] = []
         submitted = False
 
-        for block in response.content:
-            if not isinstance(block, ToolUseBlock):
-                continue
-            tool_calls += 1
+        for tc in response.tool_calls:
+            tool_call_count += 1
 
-            if block.name == "finish":
+            if tc.name == "finish":
                 candidate_patch = _git_diff(workspace_dir)
                 submitted = True
                 break
 
-            if block.name == "bash":
-                raw_input = block.input if isinstance(block.input, dict) else {}
-                command = str(raw_input.get("command", ""))
+            if tc.name == "bash":
+                command = str(tc.arguments.get("command", ""))
                 output = _bash(command, workspace_dir)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": output,
-                })
+                tool_results.append(ToolResult(tool_call_id=tc.id, content=output))
 
         if submitted:
             break
 
-        if tool_results:
-            messages.append({"role": "assistant", "content": list(response.content)})
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            # No tool use and not end_turn — stop gracefully
+        if not tool_results and not submitted:
             candidate_patch = _git_diff(workspace_dir)
             break
+
+        messages.append(Message(
+            role="assistant", content=response.content, tool_calls=response.tool_calls,
+        ))
+        messages.append(Message(role="user", tool_results=tool_results))
     else:
         candidate_patch = _git_diff(workspace_dir)
 
@@ -210,7 +201,7 @@ def _run_loop(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         turns=turns,
-        tool_calls=tool_calls,
+        tool_calls=tool_call_count,
         wall_clock_s=time.monotonic() - start,
     )
 

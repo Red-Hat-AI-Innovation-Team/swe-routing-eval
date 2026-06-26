@@ -47,6 +47,7 @@ from swe_routing_eval.cost import PriceTable, TierPricing
 from swe_routing_eval.cursor_usage import CursorUsageClient
 from swe_routing_eval.grading import SubprocessGrader, SwebenchifyGrader
 from swe_routing_eval.ingest import filter_by_year, load
+from swe_routing_eval.llm import AnthropicVertexClient
 from swe_routing_eval.orchestrator import (
     BudgetExceeded,
     GraderCircuitBreaker,
@@ -288,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     budget = BudgetConfig(max_spend_usd=args.max_spend_usd)
 
     store = FileStore(args.store)
-    scaffold = Scaffold(vertex_config)
+    scaffold = Scaffold(AnthropicVertexClient(vertex_config))
 
     has_cli_tiers = any(t not in VERTEX_TIERS for t in args.tiers)
     cursor_token = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
