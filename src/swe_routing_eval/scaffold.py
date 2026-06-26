@@ -182,6 +182,10 @@ def _run_loop(
         if submitted:
             break
 
+        if not tool_results and not submitted:
+            candidate_patch = _git_diff(workspace_dir)
+            break
+
         messages.append(Message(
             role="assistant", content=response.content, tool_calls=response.tool_calls,
         ))
