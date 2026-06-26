@@ -54,6 +54,7 @@ class LLMResponse:
 
     content: str | None
     tool_calls: list[ToolCall] | None = None
+    stop_reason: str | None = None
     finished: bool = False
     tokens_in: int = 0
     tokens_out: int = 0

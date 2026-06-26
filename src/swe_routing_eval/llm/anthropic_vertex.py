@@ -129,6 +129,7 @@ def _parse_response(response: anthropic.types.Message) -> LLMResponse:
     return LLMResponse(
         content=content,
         tool_calls=tool_calls if tool_calls else None,
+        stop_reason=response.stop_reason,
         finished=response.stop_reason == "end_turn",
         tokens_in=response.usage.input_tokens,
         tokens_out=response.usage.output_tokens,
