@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -42,7 +42,7 @@ class Message:
     - role="assistant" content and/or tool_calls
     """
 
-    role: str
+    role: Literal["system", "user", "assistant"]
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
     tool_results: list[ToolResult] | None = None
