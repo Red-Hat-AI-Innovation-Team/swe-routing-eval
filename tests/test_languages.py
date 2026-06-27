@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from swe_routing_eval.languages import (
-    LanguageConfig,
     get_config,
     get_config_or_default,
 )

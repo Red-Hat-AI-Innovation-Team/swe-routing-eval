@@ -9,7 +9,7 @@ and anti-reward-hacking checks. Adding a new language is a single
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
