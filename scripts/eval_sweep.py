@@ -239,6 +239,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Only include instances whose fix_merge_date falls in these year(s) "
              "(e.g. --year 2024 or --year 2024 2025)",
     )
+    parser.add_argument(
+        "--env-specs-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Directory containing env_spec JSON files (keyed by hash) for Python grading",
+    )
 
     args = parser.parse_args(argv)
 
@@ -315,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.grade_binary:
         grader = SubprocessGrader(binary=args.grade_binary)
     else:
-        grader = SwebenchifyGrader()
+        grader = SwebenchifyGrader(
+            env_specs_dir=str(args.env_specs_dir) if args.env_specs_dir else None,
+        )
 
     orchestrator = Orchestrator(
         store=store,

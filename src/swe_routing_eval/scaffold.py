@@ -1,7 +1,7 @@
-"""Fixed SWE-agent-style scaffold for Go patch generation (issues #8, #9).
+"""Fixed SWE-agent-style scaffold for patch generation (issues #8, #9).
 
 Every element that could vary across models is held constant:
-  SYSTEM_PROMPT, TOOLS, MAX_TURNS, SCAFFOLD_VERSION
+  SYSTEM_PROMPT (per-language), TOOLS, MAX_TURNS, SCAFFOLD_VERSION
 
 The model ID is the only variable. seed is logged for reproducibility but
 is not passed to the API (the Anthropic API has no seed parameter).
@@ -19,29 +19,14 @@ from pathlib import Path
 
 from swe_routing_eval.cursor_usage import CursorUsageClient, sum_events
 from swe_routing_eval.ingest import SWEbenchInstance
+from swe_routing_eval.languages import get_config_or_default
 from swe_routing_eval.llm import LLMClient, Message, ToolDef, ToolResult
 
 SCAFFOLD_VERSION = "v0.1.0"
 
 MAX_TURNS = 30
 
-SYSTEM_PROMPT = """\
-You are an expert Go software engineer. You will be given a bug description and \
-access to a Git repository checked out at the buggy commit.
-
-Your task is to produce a minimal patch that fixes the described bug.
-
-Workflow:
-1. Use `bash` to explore the repository and understand the relevant code.
-2. Make targeted edits with `bash` (e.g. using sed, patch, or direct file writes).
-3. Verify the code compiles: `go build ./...`
-4. Call `finish` when done.
-
-Rules:
-- Do NOT modify test files (*_test.go or anything under testdata/ directories).
-- Keep the fix minimal — change only what is necessary.
-- Do not add new external dependencies.
-"""
+SYSTEM_PROMPT = get_config_or_default("go").system_prompt
 
 # Tool definitions are fixed and identical across all model tiers.
 TOOLS: list[ToolDef] = [
@@ -117,7 +102,8 @@ class Scaffold:
         Returns:
             AttemptResult with the candidate patch (git diff HEAD) and telemetry.
         """
-        return _run_loop(self._llm, instance, workspace_dir, model_id, seed)
+        return _run_loop(self._llm, instance, workspace_dir, model_id, seed,
+                         language=instance.repo_language)
 
 
 def _run_loop(
@@ -126,11 +112,14 @@ def _run_loop(
     workspace_dir: Path,
     model_id: str,
     seed: int,
+    *,
+    language: str = "go",
 ) -> AttemptResult:
     """Inner agent loop — separated to make the client injectable in tests."""
+    system_prompt = get_config_or_default(language).system_prompt
     start = time.monotonic()
     messages: list[Message] = [
-        Message(role="system", content=SYSTEM_PROMPT),
+        Message(role="system", content=system_prompt),
         Message(
             role="user",
             content=(
@@ -255,8 +244,9 @@ class CLIScaffold:
         model_id: str,
         seed: int,
     ) -> AttemptResult:
+        system_prompt = get_config_or_default(instance.repo_language).system_prompt
         prompt = (
-            f"{SYSTEM_PROMPT}\n\n"
+            f"{system_prompt}\n\n"
             f"Repository: {instance.repo}\n\n"
             f"Problem statement:\n{instance.problem_statement}"
         )

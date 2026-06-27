@@ -117,6 +117,60 @@ def test_touches_test_files_empty_patch() -> None:
     assert touches_test_files("") is False
 
 
+def test_touches_test_files_python_test_prefix() -> None:
+    patch = (
+        "diff --git a/tests/test_utils.py b/tests/test_utils.py\n"
+        "--- a/tests/test_utils.py\n"
+        "+++ b/tests/test_utils.py\n"
+        "@@ -1 +1 @@\n"
+        "+# changed\n"
+    )
+    assert touches_test_files(patch, language="python") is True
+
+
+def test_touches_test_files_python_test_suffix() -> None:
+    patch = (
+        "--- a/src/widget_test.py\n"
+        "+++ b/src/widget_test.py\n"
+    )
+    assert touches_test_files(patch, language="python") is True
+
+
+def test_touches_test_files_python_conftest() -> None:
+    patch = (
+        "--- a/tests/conftest.py\n"
+        "+++ b/tests/conftest.py\n"
+    )
+    assert touches_test_files(patch, language="python") is True
+
+
+def test_touches_test_files_python_clean_implementation() -> None:
+    patch = (
+        "diff --git a/src/utils.py b/src/utils.py\n"
+        "--- a/src/utils.py\n"
+        "+++ b/src/utils.py\n"
+        "@@ -10,6 +10,7 @@\n"
+        "+    return None\n"
+    )
+    assert touches_test_files(patch, language="python") is False
+
+
+def test_touches_test_files_python_ignores_go_test() -> None:
+    patch = (
+        "--- a/pkg/cmd/foo_test.go\n"
+        "+++ b/pkg/cmd/foo_test.go\n"
+    )
+    assert touches_test_files(patch, language="python") is False
+
+
+def test_touches_test_files_go_ignores_python_test() -> None:
+    patch = (
+        "--- a/tests/test_utils.py\n"
+        "+++ b/tests/test_utils.py\n"
+    )
+    assert touches_test_files(patch, language="go") is False
+
+
 # ---------------------------------------------------------------------------
 # GradeResult outcome model
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from swe_routing_eval.ingest import SWEbenchInstance
+from swe_routing_eval.languages import get_config_or_default
 
 
 @dataclass
@@ -38,17 +39,18 @@ class GradeResult:
 # ---------------------------------------------------------------------------
 
 
-def touches_test_files(patch: str) -> bool:
-    """Return True if the patch modifies any *_test.go or testdata/ path.
+def touches_test_files(patch: str, language: str = "go") -> bool:
+    """Return True if the patch modifies test files for the given language.
 
     Parses unified diff headers (--- / +++ lines) to extract file paths.
     Attempts that touch test files are rejected before grading.
     """
+    config = get_config_or_default(language)
     for line in patch.splitlines():
         if not (line.startswith("--- ") or line.startswith("+++ ")):
             continue
         path = line[4:].strip()
-        if path.endswith("_test.go") or "/testdata/" in path:
+        if config.is_test_file(path):
             return True
     return False
 
@@ -165,20 +167,58 @@ class SwebenchifyGrader:
 
     This is the production grader now that SWE-benchify exposes grade() as
     an importable API (issue #2). It applies candidate_patch + canonical
-    test_patch via Docker, runs go test -json, and returns a GradeResult.
+    test_patch via Docker, runs the language-appropriate tests, and returns
+    a GradeResult.
 
     Args:
         docker_image: Override the Docker image (default: instance.image_name).
         timeout: Seconds to allow the test run (default: 300).
+        env_specs_dir: Path to directory containing env_spec JSON files keyed by hash.
     """
 
     def __init__(
         self,
         docker_image: str | None = None,
         timeout: int = 300,
+        env_specs_dir: str | None = None,
     ) -> None:
         self._docker_image = docker_image
         self._timeout = timeout
+        self._env_specs: dict[str, Any] = {}
+        if env_specs_dir:
+            self._load_env_specs(env_specs_dir)
+
+    def _load_env_specs(self, specs_dir: str) -> None:
+        from pathlib import Path
+        p = Path(specs_dir)
+        if not p.is_dir():
+            return
+        for f in p.glob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                self._env_specs[f.stem] = data
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def _build_env_spec(self, instance: SWEbenchInstance) -> Any:
+        if not instance.env_spec_hash or instance.env_spec_hash not in self._env_specs:
+            return None
+        data = self._env_specs[instance.env_spec_hash]
+        lang_config = get_config_or_default(data.get("language", instance.repo_language))
+        try:
+            from swebenchify.models import EnvironmentSpec
+            return EnvironmentSpec(
+                language=data.get("language", lang_config.name),
+                language_version=data.get("language_version", lang_config.default_language_version),
+                package_manager=data.get("package_manager", lang_config.package_manager),
+                install_cmd=data.get("install_cmd", lang_config.install_cmd),
+                test_cmd=data.get("test_cmd", lang_config.test_cmd),
+                pre_install=data.get("pre_install", []),
+                pip_packages=data.get("pip_packages", []),
+                system_dependencies=data.get("system_dependencies", []),
+            )
+        except ImportError:
+            return None
 
     def grade(
         self,
@@ -199,15 +239,23 @@ class SwebenchifyGrader:
             "test_patch": instance.test_patch,
             "FAIL_TO_PASS": instance.fail_to_pass,
             "PASS_TO_PASS": instance.pass_to_pass,
+            "repo_language": instance.repo_language,
         }
         image = self._docker_image or instance.image_name
+        env_spec = self._build_env_spec(instance)
+
+        kwargs: dict[str, Any] = {
+            "docker_image": image,
+            "timeout": self._timeout,
+        }
+        if env_spec is not None:
+            kwargs["env_spec"] = env_spec
 
         try:
             result = _sw_grade(
                 inst_dict,
                 candidate_patch,
-                docker_image=image,
-                timeout=self._timeout,
+                **kwargs,
             )
         except RuntimeError as exc:
             raise GraderError(str(exc)) from exc
@@ -287,7 +335,7 @@ def safe_grade(
     """
     if not candidate_patch.strip():
         return GradeResult(resolved=False, compiled=False)
-    if touches_test_files(candidate_patch):
+    if touches_test_files(candidate_patch, language=instance.repo_language):
         return GradeResult(resolved=False, compiled=False, rejected_test_edit=True)
     result = grader.grade(instance, candidate_patch)
     return apply_quarantine(result, instance)
