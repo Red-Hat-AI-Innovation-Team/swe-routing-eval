@@ -19,12 +19,16 @@ class TestRegistry:
         config = get_config("python")
         assert config.name == "python"
 
+    def test_java_registered(self) -> None:
+        config = get_config("java")
+        assert config.name == "java"
+
     def test_unknown_raises(self) -> None:
         with pytest.raises(KeyError):
-            get_config("java")
+            get_config("ruby")
 
     def test_unknown_falls_back_to_go(self) -> None:
-        config = get_config_or_default("java")
+        config = get_config_or_default("ruby")
         assert config.name == "go"
 
 
@@ -71,6 +75,27 @@ class TestIsTestFile:
         config = get_config("python")
         assert config.is_test_file("src/testing_helpers.py") is False
 
+    # Java
+    def test_java_test_suffix(self) -> None:
+        config = get_config("java")
+        assert config.is_test_file("src/test/java/com/pkg/SomeTest.java") is True
+
+    def test_java_test_prefix(self) -> None:
+        config = get_config("java")
+        assert config.is_test_file("src/test/java/com/pkg/TestSome.java") is True
+
+    def test_java_tests_plural(self) -> None:
+        config = get_config("java")
+        assert config.is_test_file("src/test/java/com/pkg/SomeTests.java") is True
+
+    def test_java_test_dir_marker(self) -> None:
+        config = get_config("java")
+        assert config.is_test_file("src/test/resources/fixture.json") is True
+
+    def test_java_implementation_file(self) -> None:
+        config = get_config("java")
+        assert config.is_test_file("src/main/java/com/pkg/Service.java") is False
+
 
 class TestSystemPrompt:
     def test_go_prompt_mentions_go(self) -> None:
@@ -101,3 +126,10 @@ class TestDefaults:
         assert config.package_manager == "pip"
         assert config.install_cmd == "pip install -e ."
         assert config.test_cmd == "pytest"
+
+    def test_java_defaults(self) -> None:
+        config = get_config("java")
+        assert config.default_language_version == "8"
+        assert config.package_manager == "maven"
+        assert config.install_cmd == ""
+        assert "mvn test" in config.test_cmd

@@ -124,3 +124,37 @@ register(LanguageConfig(
     install_cmd="pip install -e .",
     test_cmd="pytest",
 ))
+
+
+# ---------------------------------------------------------------------------
+# Java
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PROMPT_JAVA = """\
+You are an expert Java software engineer. You will be given a bug description and \
+access to a Git repository checked out at the buggy commit.
+
+Your task is to produce a minimal patch that fixes the described bug.
+
+Workflow:
+1. Use `bash` to explore the repository and understand the relevant code.
+2. Make targeted edits with `bash` (e.g. using sed, patch, or direct file writes).
+3. Verify the code compiles: `mvn compile -q -B`
+4. Call `finish` when done.
+
+Rules:
+- Do NOT modify test files (files under src/test/ directories, or files named *Test.java).
+- Keep the fix minimal — change only what is necessary.
+- Do not add new external dependencies.
+"""
+
+register(LanguageConfig(
+    name="java",
+    system_prompt=_SYSTEM_PROMPT_JAVA,
+    test_file_globs=("*Test.java", "Test*.java", "*Tests.java"),
+    test_dir_markers=("src/test/",),
+    default_language_version="8",
+    package_manager="maven",
+    install_cmd="",
+    test_cmd="mvn test -B -Dmaven.test.failure.ignore=true",
+))
