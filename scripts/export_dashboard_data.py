@@ -41,7 +41,11 @@ def main() -> None:
     parser.add_argument(
         "--instances",
         nargs="+",
-        default=[str(ROOT / "instances.jsonl"), str(ROOT / "instances-go.jsonl")],
+        default=[
+            str(ROOT / "instances.jsonl"),
+            str(ROOT / "instances-go.jsonl"),
+            str(ROOT / "instances-python.jsonl"),
+        ],
     )
     parser.add_argument("--output", default=str(ROOT / "docs" / "data.json"))
     args = parser.parse_args()
