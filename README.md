@@ -4,9 +4,14 @@
 
 **Dashboard: https://ai-innovation.team/swe-routing-eval/**
 
-Cost/quality routing evaluator for Go software-engineering benchmarks. Answers the
-question: **for a given population of bugs, which Claude model tier (or escalation
+Cost/quality routing evaluator for software-engineering benchmarks. Answers the
+question: **for a given population of bugs, which model tier (or escalation
 cascade) resolves the most bugs per dollar?**
+
+Supports **Go** and **Python** instances out of the box. Language-specific
+behavior (system prompts, test file detection, grader defaults) is configured
+declaratively in `languages.py` — adding a new language is configuration, not
+forked code.
 
 ## How it fits together
 
@@ -31,6 +36,8 @@ Emit JSONL instances     Build Pareto frontier + output memo + plot
 | `src/swe_routing_eval/stats.py` | Bootstrap CI, paired McNemar test, Connor (1987) power sizing |
 | `src/swe_routing_eval/frontier.py` | Pareto frontier, memo renderer, frontier plot |
 | `src/swe_routing_eval/orchestrator.py` | Sweep scheduler — parallel attempts, resume, budget guard, workspace cleanup |
+| `src/swe_routing_eval/languages.py` | Declarative language config registry (system prompts, test patterns, defaults) |
+| `src/swe_routing_eval/llm.py` | LLM client abstraction (Anthropic Vertex, Cursor CLI) |
 | `src/swe_routing_eval/scaffold.py` | Fixed SWE-agent-style scaffold (bash + finish tools) |
 | `scripts/eval_sweep.py` | Run or dry-run the model × instance × attempt matrix |
 | `scripts/m0_coverage_check.py` | M0 gate: grade gold patches, verify all resolve |
@@ -230,8 +237,8 @@ after new runs and commit it:
 python3 scripts/export_dashboard_data.py
 ```
 
-This reads `runs.db` and `instances.jsonl` / `instances-go.jsonl`,
-then writes `docs/data.json`. The dashboard at `docs/index.html` loads
+This reads `runs.db` and `instances.jsonl` / `instances-go.jsonl` /
+`instances-python.jsonl`, then writes `docs/data.json`. The dashboard at `docs/index.html` loads
 this file client-side — no server required.
 
 To preview locally:
@@ -268,5 +275,5 @@ cost      = c₁ + (1−p₁)·c₂ + (1−p₁)·(1−p₂)·c₃ + …
 ```bash
 ruff check .    # lint
 mypy src/       # type-check
-pytest tests/   # test suite (181 tests, ~1s)
+pytest tests/   # test suite
 ```
