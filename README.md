@@ -8,21 +8,52 @@ Cost/quality routing evaluator for software-engineering benchmarks. Answers the
 question: **for a given population of bugs, which model tier (or escalation
 cascade) resolves the most bugs per dollar?**
 
-Supports **Go** and **Python** instances out of the box. Language-specific
-behavior (system prompts, test file detection, grader defaults) is configured
-declaratively in `languages.py` — adding a new language is configuration, not
-forked code.
+Supports **Go**, **Python**, and **Java** instances out of the box.
+Language-specific behavior (system prompts, test file detection, grader
+defaults) is configured declaratively in `languages.py` — adding a new
+language is a single `register()` call, not forked code.
 
-## How it fits together
+## End-to-end workflow
 
 ```
-SWE-benchify          →  swe-routing-eval
-─────────────────────    ──────────────────────────────────────────────
-Mine issue-linked PRs    Run each model against each instance (k times)
-Validate with            Grade candidate patches via Multi-SWE-bench
-  Multi-SWE-bench        Compute pass@1, cost-per-resolved-bug, cascade
-Emit JSONL instances     Build Pareto frontier + output memo + plot
+SWE-benchify                        swe-routing-eval
+────────────────────────────────    ────────────────────────────────────
+1. Mine issue-linked PRs            5. Import instances (JSONL)
+2. Validate with Multi-SWE-bench    6. Run models against instances (k×)
+3. Build & push Docker images       7. Grade candidate patches via Docker
+4. Emit JSONL + env_spec.json       8. Analyze: Pareto frontier, cascade
 ```
+
+### Preparing instances from SWE-benchify
+
+SWE-benchify pipeline workflows (e.g. `java-pipeline.yml`,
+`python-pipeline.yml`) produce two key artifacts per repo:
+
+- **`{repo_slug}-task-instances.jsonl`** — validated instances with patches,
+  test patches, and metadata
+- **`env_spec.json`** — build/test environment spec (language version, package
+  manager, test command, pre-install steps)
+
+To use these instances in swe-routing-eval:
+
+1. **Copy the instances JSONL** into this repo (e.g. `instances-java.jsonl`)
+   and optionally append to `instances.jsonl`.
+
+2. **Copy the env spec** to `config/` named by its full SHA-256 hash:
+
+   ```bash
+   # The hash is the env_spec_hash field in the instances JSONL
+   cp env_spec.json config/<full-env-spec-hash>.json
+   ```
+
+   The grader looks up env specs by filename stem, so the file must be named
+   `<hash>.json` (not `env_spec.json` or a truncated hash).
+
+3. **Docker images** (optional but recommended): If the pipeline built and
+   pushed images (the `image_name` field is populated), the grader pulls them
+   directly. If `image_name` is empty, the grader falls back to building a
+   container from the env spec at grade time — this works but is slower and
+   requires `--env-specs-dir`.
 
 ## Structure
 
@@ -39,14 +70,16 @@ Emit JSONL instances     Build Pareto frontier + output memo + plot
 | `src/swe_routing_eval/languages.py` | Declarative language config registry (system prompts, test patterns, defaults) |
 | `src/swe_routing_eval/llm.py` | LLM client abstraction (Anthropic Vertex, Cursor CLI) |
 | `src/swe_routing_eval/scaffold.py` | Fixed SWE-agent-style scaffold (bash + finish tools) |
-| `scripts/eval_sweep.py` | Run or dry-run the model × instance × attempt matrix |
+| `scripts/eval_sweep.py` | Run or dry-run the model x instance x attempt matrix |
 | `scripts/m0_coverage_check.py` | M0 gate: grade gold patches, verify all resolve |
 | `scripts/analyze_runs.py` | Produce frontier, memo, and plot from a completed run store |
 | `scripts/watch_sweep.py` | Live progress display while a sweep is running |
 | `scripts/export_dashboard_data.py` | Export `runs.db` + instances to `docs/data.json` for the dashboard |
 | `scripts/regrade.py` | Re-grade stored patches against current Docker images |
 | `docs/index.html` | Static GitHub Pages dashboard (Plotly.js, vanilla JS) |
-| `config/prices.json` | Vertex pricing at RH committed-use rates |
+| `config/prices.json` | Model pricing table |
+| `config/<hash>.json` | Env spec files keyed by SHA-256 hash (used by grader) |
+| `instances*.jsonl` | Instance files — per-language or combined |
 
 ## Setup
 
@@ -55,7 +88,29 @@ pip install -e ".[dev]"      # core + dev tools (ruff, mypy, pytest)
 pip install -e ".[analysis]" # + scipy / matplotlib for stats and plots
 ```
 
+The grader imports `swebenchify.grader.grade` from the SWE-benchify repo.
+Install it in the same environment:
+
+```bash
+pip install -e /path/to/SWE-benchify
+```
+
 ## Prerequisites
+
+### Docker
+
+Docker must be running for grading. The grader builds containers to run
+tests against candidate patches. Verify with:
+
+```bash
+docker image ls   # should succeed without I/O errors
+```
+
+If Docker Desktop crashes during grading (common with large Maven builds),
+check `docker info | grep "Total Memory"` — the default 8GB VM allocation
+may be insufficient. Increase it in Docker Desktop settings.
+
+### Anthropic models via Vertex AI
 
 Vertex AI access with ADC configured; no `ANTHROPIC_API_KEY` needed.
 
@@ -96,13 +151,6 @@ reasoning tokens).
 **Important:** GPT sweeps must use `--workers 1`. Concurrent runs of the
 same model produce overlapping time windows, causing cost events to be
 misattributed between attempts.
-
-The grader imports `swebenchify.grader.grade` from the SWE-benchify repo.
-Clone it and install it in the same environment:
-
-```bash
-pip install -e /path/to/SWE-benchify
-```
 
 ## Usage
 
@@ -146,6 +194,64 @@ python -u scripts/eval_sweep.py instances.jsonl \
     2>&1 | tee sweep.log
 ```
 
+#### Sweep flags reference
+
+| Flag | Default | Description |
+|---|---|---|
+| `instances.jsonl` (positional) | *required* | SWE-benchify instances file |
+| `--tiers` | `sonnet` | Model tiers to evaluate (space-separated) |
+| `--k` | `3` | Attempts per (model, instance) pair |
+| `--price-table` | *required* | JSON pricing file (see `config/prices.json`) |
+| `--max-spend-usd` | `100.00` | Hard spend cap — sweep stops when reached |
+| `--store` | `runs.db` | SQLite database for results |
+| `--workspace-root` | system temp | Directory for repo checkouts |
+| `--workers` | `4` | Concurrent attempts (use `1` for CLI/GPT tiers) |
+| `--year` | all | Filter instances by fix_merge_date year(s) |
+| `--env-specs-dir` | none | Directory of `<hash>.json` env spec files |
+| `--dry-run` | off | Cost projection only, no inference |
+
+#### Tier names
+
+**Vertex tiers** (`opus`, `sonnet`, `haiku`) are symbolic — they resolve to
+model IDs via the `ANTHROPIC_DEFAULT_*_MODEL` environment variables.
+
+**CLI tiers** (e.g. `claude-4.6-sonnet-medium-thinking`,
+`claude-4.6-opus-max-thinking`, `gpt-5.4-xhigh`, `gpt-5.3-codex-xhigh`)
+are passed as literal strings. They must have a matching entry in the
+`--price-table` JSON file. These run through the Cursor `agent` CLI.
+
+#### Docker images vs env specs for grading
+
+The grader needs a Docker environment to run tests. It resolves this in
+order of precedence:
+
+1. **Pre-built image** — if the instance has a non-empty `image_name` field,
+   the grader pulls and uses it directly. This is the fastest path.
+
+2. **Env spec fallback** — if `image_name` is empty but `--env-specs-dir` is
+   provided and contains a `<env_spec_hash>.json` file matching the instance,
+   the grader builds a Docker container on the fly from the spec.
+
+3. **Failure** — if neither is available, the grader cannot build a container.
+   The run records `compiled=0` with empty test results.
+
+For instances without pre-built images (e.g. freshly mined Java instances
+before the image build workflow runs), you **must** pass `--env-specs-dir`:
+
+```bash
+python -u scripts/eval_sweep.py instances-java.jsonl \
+    --tiers claude-4.6-sonnet-medium-thinking gpt-5.4-xhigh \
+    --k 3 \
+    --price-table config/prices.json \
+    --workers 1 \
+    --env-specs-dir config \
+    --store runs.db \
+    --workspace-root /tmp/swe-routing-eval-java \
+    2>&1 | tee sweep.log
+```
+
+#### Resumability
+
 The sweep is **resumable** — rerunning the same command skips already-completed
 (model, instance, attempt) triples. If the grader fails on an instance,
 a sentinel record is written so that instance is not retried indefinitely.
@@ -154,17 +260,6 @@ Workspaces are created lazily (one per worker thread) and cleaned up
 automatically after each attempt finishes. Disk usage during a sweep is
 bounded by `--workers`, not by total instance count. The shared repo clones
 in `_cache/` are preserved across runs.
-
-Filter to instances from a specific year:
-
-```bash
-python -u scripts/eval_sweep.py instances.jsonl --year 2024 \
-    --tiers sonnet opus --k 3 \
-    --price-table config/prices.json \
-    --max-spend-usd 100.00 \
-    --store runs.db \
-    --workspace-root /tmp/workspaces
-```
 
 Watch live progress in a second terminal:
 
@@ -237,9 +332,9 @@ after new runs and commit it:
 python3 scripts/export_dashboard_data.py
 ```
 
-This reads `runs.db` and `instances.jsonl` / `instances-go.jsonl` /
-`instances-python.jsonl`, then writes `docs/data.json`. The dashboard at `docs/index.html` loads
-this file client-side — no server required.
+This reads `runs.db` and `instances*.jsonl` files, then writes
+`docs/data.json`. The dashboard at `docs/index.html` loads this file
+client-side — no server required.
 
 To preview locally:
 
@@ -250,6 +345,37 @@ open http://localhost:8765
 
 To publish, commit and push `docs/data.json`, then enable GitHub Pages
 in repo settings (source: main branch, `/docs` folder).
+
+## Troubleshooting
+
+### Grading fails with `compiled=0` and empty test results
+
+The grader couldn't build a Docker container. Check:
+
+1. **Is Docker running?** `docker image ls` should return without errors.
+2. **Does the instance have `image_name` set?** If not, you need
+   `--env-specs-dir` pointing to a directory with `<env_spec_hash>.json`.
+3. **Is the env spec file named correctly?** It must be the *full* SHA-256
+   hash as the filename (e.g. `89cac2a28dd2...685b.json`), not a truncated
+   or prefixed name.
+
+### Docker Desktop crashes during grading
+
+Java/Maven builds can consume significant memory. The Docker Desktop VM
+defaults to 8GB. If builds OOM:
+
+- Increase Docker Desktop memory (Settings > Resources)
+- Free build cache: `docker builder prune`
+- Free unused images: `docker image prune`
+
+Check current usage with `docker system df`.
+
+### GPT sweep cost attribution is wrong
+
+GPT models via Cursor CLI require `--workers 1`. Concurrent runs produce
+overlapping time windows, causing the dashboard API to misattribute costs
+between attempts. Also ensure `CURSOR_SESSION_TOKEN` is set for accurate
+reasoning-token costs.
 
 ## Metrics
 
