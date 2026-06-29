@@ -30,5 +30,13 @@
   "gpt-5.4-xhigh": {
     "input_per_1k_tokens": 0.0025,
     "output_per_1k_tokens": 0.015
+  },
+  "deepseek-v4-flash": {
+    "input_per_1k_tokens": 0.00014,
+    "output_per_1k_tokens": 0.00028
+  },
+  "deepseek-v4-pro": {
+    "input_per_1k_tokens": 0.000435,
+    "output_per_1k_tokens": 0.00087
   }
 }
