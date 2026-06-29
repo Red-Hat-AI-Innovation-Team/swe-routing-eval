@@ -12,7 +12,7 @@ from openai.types.chat.chat_completion_message_tool_call import (
 )
 
 from swe_routing_eval.llm.openai_client import (
-    OpenAIClient,
+    OpenAIChatCompletionsClient,
     _message_to_openai,
     _parse_response,
     _to_openai_tools,
@@ -249,7 +249,7 @@ def test_chat_wires_translation_and_parsing() -> None:
         mock_mod.OpenAI.return_value = mock_client_instance
         mock_client_instance.chat.completions.create.return_value = mock_resp
 
-        client = OpenAIClient(_TEST_CONFIG)
+        client = OpenAIChatCompletionsClient(_TEST_CONFIG)
         result = client.chat(
             model_id="gpt-4o",
             messages=[
@@ -295,7 +295,7 @@ def test_chat_with_tool_results_in_history() -> None:
         mock_mod.OpenAI.return_value = mock_client_instance
         mock_client_instance.chat.completions.create.return_value = mock_resp
 
-        client = OpenAIClient(_TEST_CONFIG)
+        client = OpenAIChatCompletionsClient(_TEST_CONFIG)
         client.chat(
             model_id="gpt-4o",
             messages=[

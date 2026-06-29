@@ -13,7 +13,7 @@ from swe_routing_eval.llm.types import LLMResponse, Message, ToolCall, ToolDef
 from swe_routing_eval.openai_config import OpenAIConfig
 
 
-class OpenAIClient(LLMClient):
+class OpenAIChatCompletionsClient(LLMClient):
     """LLMClient backed by OpenAI chat completions API.
 
     Compatible with any OpenAI-compatible endpoint (DeepSeek, vLLM, Azure, etc.)
