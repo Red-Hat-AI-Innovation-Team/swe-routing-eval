@@ -10,17 +10,17 @@ from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMe
 
 from swe_routing_eval.llm.base import LLMClient
 from swe_routing_eval.llm.types import LLMResponse, Message, ToolCall, ToolDef
-from swe_routing_eval.openai_config import OpenAIConfig
+from swe_routing_eval.openai_config import OpenAIChatCompletionsConfig
 
 
 class OpenAIChatCompletionsClient(LLMClient):
     """LLMClient backed by OpenAI chat completions API.
 
     Compatible with any OpenAI-compatible endpoint (DeepSeek, vLLM, Azure, etc.)
-    via ``OpenAIConfig.base_url``.
+    via ``OpenAIChatCompletionsConfig.base_url``.
     """
 
-    def __init__(self, config: OpenAIConfig) -> None:
+    def __init__(self, config: OpenAIChatCompletionsConfig) -> None:
         self._client = openai.OpenAI(api_key=config.api_key, base_url=config.base_url)
 
     def chat(

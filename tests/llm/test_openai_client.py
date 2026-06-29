@@ -18,9 +18,9 @@ from swe_routing_eval.llm.openai_client import (
     _to_openai_tools,
 )
 from swe_routing_eval.llm.types import Message, ToolCall, ToolDef, ToolResult
-from swe_routing_eval.openai_config import OpenAIConfig
+from swe_routing_eval.openai_config import OpenAIChatCompletionsConfig
 
-_TEST_CONFIG = OpenAIConfig(api_key="test-key", base_url="https://test.example.com")
+_TEST_CONFIG = OpenAIChatCompletionsConfig(api_key="test-key", base_url="https://test.example.com")
 
 # ---------------------------------------------------------------------------
 # _message_to_openai
