@@ -707,6 +707,25 @@ let filters = { repos: new Set(), languages: new Set(), scaffold: 'Cursor CLI' }
 let sort = { col: 'fix_merge_date', dir: 'desc' };
 let detail = null;
 
+function filtersFromURL() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.has('repos')) filters.repos = new Set(p.get('repos').split(',').filter(Boolean));
+  if (p.has('langs')) filters.languages = new Set(p.get('langs').split(',').filter(Boolean));
+  if (p.has('scaffold')) filters.scaffold = p.get('scaffold');
+  if (p.has('pass')) passMode = p.get('pass');
+}
+
+function filtersToURL() {
+  const p = new URLSearchParams();
+  if (filters.repos.size) p.set('repos', [...filters.repos].join(','));
+  if (filters.languages.size) p.set('langs', [...filters.languages].join(','));
+  if (filters.scaffold !== 'Cursor CLI') p.set('scaffold', filters.scaffold);
+  if (passMode !== 'pass1') p.set('pass', passMode);
+  const qs = p.toString();
+  const url = window.location.pathname + (qs ? '?' + qs : '');
+  history.replaceState(null, '', url);
+}
+
 function patchFiles(patch) {
   if (!patch) return [];
   return [...new Set(patch.split('\n').filter(l => l.startsWith('diff --git')).map(l => {
@@ -817,6 +836,7 @@ function renderFilters() {
       passToggle.querySelectorAll('button').forEach(b =>
         b.classList.toggle('active', b.dataset.mode === passMode)
       );
+      filtersToURL();
       renderParetoChart();
       renderDateChart();
       renderH2H();
@@ -1724,6 +1744,7 @@ function updateFilterSummary() {
 }
 
 function renderAll() {
+  filtersToURL();
   updateFilterSummary();
   renderIntro();
   renderSummaryCards();
@@ -1750,6 +1771,7 @@ async function init() {
   const ts = new Date(DATA.generated_at);
   document.getElementById('timestamp').textContent = `Updated ${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}`;
 
+  filtersFromURL();
   renderIntro();
   renderFilters();
   renderAll();

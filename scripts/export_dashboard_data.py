@@ -45,6 +45,7 @@ def main() -> None:
             str(ROOT / "instances.jsonl"),
             str(ROOT / "instances-go.jsonl"),
             str(ROOT / "instances-python.jsonl"),
+            str(ROOT / "instances-rust.jsonl"),
         ],
     )
     parser.add_argument("--output", default=str(ROOT / "docs" / "data.json"))
