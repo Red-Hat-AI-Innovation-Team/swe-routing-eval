@@ -13,6 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+openai = [
+    "openai",
+]
 analysis = [
     "scipy>=1.13",
     "numpy>=2.0",
@@ -24,6 +27,7 @@ dev = [
     "pytest-xdist>=3.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    "openai",
     "scipy>=1.13",
     "numpy>=2.0",
     "matplotlib>=3.9",
